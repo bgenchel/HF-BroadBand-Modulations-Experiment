@@ -1,0 +1,169 @@
+% plots results from DecompMat()
+%
+%
+%
+%
+%
+%
+%
+
+function PlotDecompMat(wtsphname,writepath,plotfacs,clabels,shuffnum,vertlines,ttl)
+    
+    
+    
+    alpha = .01;
+    s = load ([writepath,wtsphname,'.mat']);
+    if isempty(s.eigfile)
+        sph=floatread([writepath,wtsphname,'.sph'],[s.numrows s.numrows],[],0); 
+        wts=floatread([writepath,wtsphname,'.wts'],[s.pcmat s.numrows],[],0); 
+    else
+        sph=floatread([writepath,wtsphname,'.sph'],[s.numrows s.numrows],[],0); 
+        wts=floatread([writepath,wtsphname,'.wts'],[s.numrows s.numrows],[],0); 
+    end;
+    icamat=floatread([writepath,wtsphname,'.fdt'],[s.numrows s.numframes],[],0);    
+    ws = wts*sph;winv = pinv(ws);    acts = ws*icamat;   
+    if isempty(plotfacs)
+        plotfacs = [1:size(winv,2)];
+    end;
+    if isfield(s,'pcmat')
+        if ~isempty(s.pcmat)
+            if length(s.rowmeans) == length(s.freqs)*length(s.times)
+                erspeig = floatread([writepath,wtsphname,'ERSPEIG.fdt'],[length(s.freqs)*length(s.times) s.pcmat],[],0);
+                erspdat = erspeig*winv(1:s.pcmat,:);
+                twwt = 'tw';
+            elseif length(s.rowmeans) == length(s.freqs)
+                erspeig = floatread([writepath,wtsphname,'ERSPEIG.fdt'],[length(s.times) inf],[],0);
+                windat = erspeig*winv;% WT decomp, no context
+                twwt = 'wt';
+            end;
+        end;
+    end;
+    if isfield(s,'pcidx')
+        if ~isempty(s.pcidx)
+            idxeig = floatread([writepath,wtsphname,'IDXEIG.fdt'],[length(s.rowmeanidx) s.pcidx],[],0);
+            idxdat = idxeig*winv(s.pcmat+1:end,:);
+            %if ~isempty(shuffnum) % plot weighted mean instead
+            %    idxdat = idxeig*icamat(s.pcmat+1:end,:);
+            %end;
+        end;
+    end;
+    figure; 
+    if ~isempty(s.pcidx)
+        row = 5; col = 6; pl = 1;
+    else
+        row = 5; col = 4; pl = 1;
+    end;
+    lim = max(max(abs(erspdat)));
+    clim = [];
+    for dim = 1:length(plotfacs)
+        if pl > row*col
+            if ~isempty(shuffnum)
+                textsc([wtsphname,'--',ttl,'-- Weighted Means'],'title');
+            else
+                textsc([wtsphname,'--',ttl,'-- Winv Templates'],'title');
+            end;
+            figure; pl = 1;
+        end;
+        if twwt == 'tw'
+        % first plot the wts distribution:
+         sbplot(row,col,pl); pl = pl+1;
+         hist(acts(dim,:),ceil(size(acts,2)/20)); hold on;
+         ph = plot([0 0],[get(gca,'ylim')],'r-');
+         title(['Dim ',int2str(dim),'-All Wts ']);
+
+         plotdat = erspdat(:,dim);
+        if ~isempty(s.pcidx)
+            plotidx = idxdat(:,dim); 
+        end;
+        sigpnts = [];
+        if ~isempty(shuffnum)% get bootstrap limits (plot weighted mean instead)
+            clear limersp bootmean
+            fprintf('\nCollecting bootstrap distribution for masking...\n');
+            %wtdmean = (erspdat*acts(dim,:)')/size(erspdat,2);
+            wtdmean = (erspdat(:,dim)*acts(dim,:))/size(erspdat,2);wtdmean=mean(wtdmean,2);
+            for b = 1:shuffnum
+                randidx = randperm(size(acts,2));
+                tpmean = (erspdat(:,dim)*acts(dim,randidx))/size(erspdat,2);
+                bootmean(:,b) = mean(tpmean,2);
+            end;
+            bootmean = sort(bootmean,2);
+            limersp(:,2) = bootmean(:,end-ceil(shuffnum*alpha)); % max boot
+            limersp(:,1) = bootmean(:,ceil(shuffnum*alpha));  % min boot
+            wtdmean(find(wtdmean>limersp(:,1)&wtdmean<limersp(:,2))) = 0;
+            plotdat = wtdmean;
+            if ~isempty(s.pcidx)
+                wtdctx = (idxdat(:,dim)*acts(dim,:))/size(idxdat,2); 
+                 wtdctx = mean(wtdctx);
+                clear tpmean bootmean
+                for b = 1:shuffnum
+                    randidx = randperm(size(acts,2));
+                    tpmean = (idxdat(:,dim)*acts(dim,randidx))/size(erspdat,2);
+                    bootmean(:,b) = mean(tpmean,2);
+                end;
+                bootmean = sort(bootmean,2);
+                limidx(:,2) = bootmean(:,end-ceil(shuffnum*alpha)); % max boot
+                limidx(:,1) = bootmean(:,ceil(shuffnum*alpha));  % min boot
+                sigpnts = find(wtdctx<limidx(:,1)|wtdctx>limidx(:,2));
+                plotidx = wtdctx;                
+            end;
+            
+        end;
+        lim = max(abs(plotdat));
+        if lim == 0
+            lim = .1;
+        end;
+        if isempty(clim) & ~isempty(s.pcidx)
+            clim = max(abs(plotidx)) + max(abs(plotidx))*.05;
+        end;
+        sbplot(row,col,pl); pl = pl+1;
+        if strcmp(s.freqscale,'quad')
+            quadimagesc(s.times,s.freqs,reshape(plotdat,length(s.freqs),length(s.times)),[-lim lim]);hold on;
+        elseif strcmp(s.freqscale,'log')
+            mylogimagesc(s.times,s.freqs,reshape(plotdat,length(s.freqs),length(s.times)),[-lim lim]);hold on;
+            set(gca,'ydir','norm'); 
+        else
+            
+        end;
+        for v = 1:length(vertlines)
+            plot([vertlines(v) vertlines(v)],[get(gca,'ylim')],'k-');
+        end;   
+        title(['Dim ',int2str(dim)]);
+        cbar;
+        if ~isempty(s.pcidx)
+            sbplot(row,col,pl); pl = pl+1;
+            ph = plot([1:size(idxdat,1)],plotidx,'k-','linewidth',1);
+            set(ph,'color',[.5 .5 .5]);
+            set(gca,'xlim',[0 size(idxdat,1)+1]); hold on;
+            ph = plot([get(gca,'xlim')],[0 0],'r-');
+            for q = 1:size(idxdat,1)
+                ph = plot(q,plotidx(q),'bo');
+            end;
+            set(gca,'ylim',[-clim clim]);
+            for q = 1:size(idxdat,1)
+                ph = text(q,-clim+abs(-clim*.05),clabels{q}); 
+                set(ph,'rotation',90);
+                if ~isempty(sigpnts)
+                    for sg = 1:length(sigpnts)
+                        ph = plot(sigpnts(sg),clim-clim*.1,'*'); set(ph,'color',[1 .6 0]);
+                    end;
+                end;
+            end;
+        end;
+        elseif twwt == 'wt'
+            sbplot(row,col,pl); pl = pl+1;
+            hist(windat(:,dim),ceil(size(windat,1)/20)); hold on;
+            ph = plot([0 0],[get(gca,'ylim')],'r-');
+            title(['Dim ',int2str(dim),'-All Wts ']);
+            sbplot(row,col,pl)
+            plot([0 s.freqs(end)],[0 0],'k-'); hold on;
+            plot(s.freqs,acts(dim,:));
+            set(gca,'xlim',[s.freqs(1) s.freqs(end)])
+            pl = pl+1;
+        end;
+    end;
+    if ~isempty(shuffnum)
+        textsc([wtsphname,'--',ttl,'-- Weighted Means'],'title');
+   else
+       textsc([wtsphname,'--',ttl,'-- Winv Templates'],'title');
+    end;
+    

@@ -1,0 +1,15 @@
+function PlotIXclusterScatter(stem,fullpath,icidx);
+
+scatwts = [];
+for ic = 1:size(icidx,1)
+  name = [stem,int2str(icidx(ic,1))];  
+  s = load([fullpath,name,'.mat']);  
+  wts = floatread([fullpath,name,'.wts'],[s.numrows s.numrows],[],0);
+  sph = floatread([fullpath,name,'.sph'],[s.numrows s.numrows],[],0);     
+  ws = wts*sph; acts = ws*dat;
+  
+  scatwts = [scatwts;acts(abs(icidx(ic,2)),:)];
+  
+end;
+wtsori = icidx(:,2)/abs(icidx(:,2)); % 1s and -1s according to orientation
+

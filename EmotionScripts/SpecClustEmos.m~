@@ -1,0 +1,65 @@
+% plots the mean emotion weights for each of the ~8 spectral clusters
+%
+%
+%
+
+function SpecClustEmos(savedat,fullpaths,emomeans)
+    
+    %r = load('/data/common4/emotion/CoModAlphaClusts.mat');
+    %nxs = cell(1,length(r.facvec{1}));
+    %for clust = 1:8
+    %        clustlist{clust}  = nxs;
+    %        clustspecs{clust} = nxs;
+    %end;
+    for nx = 1:length(r.facvec{1})
+        clust = 1; 
+        s = load([fullpaths{nx},savedat,'.mat']);  
+        sph=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.sph'],[s.numtrials s.numtrials],[],0); 
+        wts=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.wts'],[s.pcs s.numtrials],[],0); 
+        ws = wts*sph;     icawinv = pinv(ws); icawinv = icawinv';
+        % find members of alpha clusters:    
+        r = load('/data/common4/emotion/CoModAlphaClusts.mat');
+        for cls = 1:length(r.facvec)
+            if ~isempty(r.facvec{cls}{nx})
+                clustlist{clust}{nx} = r.facvec{cls}{nx};
+            end;
+            if ~isempty(clustlist{clust}{nx})
+                for memb = 1:length(clustlist{clust}{nx})
+                    curridx = find(r.alphafacs{fc}(:,1) == nx & r.alphafacs{fc}(:,2) == abs(clustlist{clust}{nx}(memb)));
+                    clustspecs{clust}{nx} = r.alphatempls{fc}(curridx,:);
+                end;
+            end;        
+            clust = clust + 1;
+        end;
+        
+        % find members of beta clusters:    
+        r = load('/data/common4/emotion/BetaClusters.mat');
+        for cls = 1:length(r.facvec)
+            if ~isempty(r.facvec{cls}{nx})
+                clustlist{clust}{nx} = r.facvec{cls}{nx};
+            end;
+            if ~isempty(clustlist{clust}{nx})
+                for memb = 1:length(clustlist{clust}{nx})
+                    curridx = find(r.betafacs{fc}(:,1) == nx & r.betafacs{fc}(:,2) == abs(clustlist{clust}{nx}(memb)));
+                    clustspecs{clust}{nx}(end+1,:) = r.betatempls{fc}(curridx,:);
+                end;
+            end;
+            clust = clust + 1;
+        end;        
+        
+        % find members of gamma clusters:    
+        r = load('/data/common4/emotion/GammaClusters.mat');
+        for cls = 1:length(r.facvec)
+            if ~isempty(r.facvec{cls}{nx})
+                clustlist{clust}{nx} = r.facvec{cls}{nx};
+            end;
+            if ~isempty(clustlist{clust}{cls}{nx})
+                for memb = 1:length(clustlist{clust}{cls}{nx})
+                    curridx = find(r.gamafacs{fc}(:,1) == nx & r.gamafacs{fc}(:,2) == abs(clustlist{clust}{cls}{nx}(memb)));
+                    clustspecs{clust}{cls}{nx}(end+1,:) = r.gamatempls{fc}(curridx,:);
+                end;
+            end;
+            clust = clust + 1;
+        end;
+        fprintf('Subject %s done.\n',int2str(nx));
+    end;

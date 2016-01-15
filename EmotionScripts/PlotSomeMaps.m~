@@ -1,0 +1,42 @@
+% plots a couple of comps from each subj
+% short lists of good comps to view
+% PlotSomeMaps(datset,paths,complist,ttl);
+
+
+
+function PlotSomeMaps(datset,paths,complist,ttl)
+    
+    
+    howmany= 0;
+    for nx = 1:length(complist)
+        if ~isempty(complist{nx})
+            hm = length(complist{nx});
+            howmany = howmany+hm;
+        end;
+    end;
+    
+    figure; pl = 1; 
+    row=round(sqrt(howmany)); col=ceil(sqrt(howmany));  
+    if row > 9
+        row = 10; col = 10;
+    end;        
+    for nx = 1:length(complist)
+        if ~isempty(complist{nx})
+            EEG = pop_loadset(datset ,paths{nx}); 
+            for c = 1:length(complist{nx})
+                if pl > row*col
+                    ph = textsc(ttl,'title');  set(ph,'fontsize',14);
+                    figure; pl = 1;
+                end;
+                sbplot(row,col,pl)
+                topoplot(EEG.icawinv(:,complist{nx}(c)),EEG.chanlocs,'electrodes','off');
+                hold on;     set(gca,'fontsize',14);
+                title([int2str(nx),'-',int2str(complist{nx}(c))]); 
+                pl = pl+1; %cbar;
+            end;
+        end;
+    end;
+    ph = textsc(ttl,'title');  set(ph,'fontsize',14);
+    set(gcf,'PaperOrientation','landscape');set(gcf,'PaperPosition',[0.25 0.25 10.5 8]);
+    
+

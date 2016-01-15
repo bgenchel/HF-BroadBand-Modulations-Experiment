@@ -1,0 +1,12 @@
+% plots the PCA spectral data that is passed to ICA for 
+% decompostion in the TW fashion
+
+function PlotTWspecPCs(savedat,datpath);
+    
+    
+    keyboard
+    s = load([datpath,savedat,'.mat']);  
+
+    data = floatread([fullpaths{nx},stem,int2str(gdcomps{nx}(ic)),'.fdt'],[s.pcs inf],[],0);
+
+    

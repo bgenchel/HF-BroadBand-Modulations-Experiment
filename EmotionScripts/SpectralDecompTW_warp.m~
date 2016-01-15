@@ -1,0 +1,177 @@
+% takes a dataset from single or multiple subjects and runs time/freq analysis on single trials, concatenates, adds an optional context matrix, then runs ICA to find ERSP (+context) templates
+%
+% [outpower,freqs,times,keeptrack] = SpectralDecompTW_warp(datset,paths,complist,wtsphname,tmpoints,frqlims,nfreqs,freqscale,warpdat);
+%
+% datset -- Single dataset name or cell array of data set names (string or cell array of strings)
+% paths -- full path names from all subjects to be analyzed (cell array of strings)
+% writepath -- full path to directory where decomposition data should be stored
+% complist -- cell array of vectors containing component indices to include in analysis
+% wtsphname -- name to be given to ersp matrix and to be incorporated into wts and sph file names (string)
+% tlims -- [mintime maxtime] to include from each epoch  (in ms)
+% ntimes -- [integer] number of time points in single-trial ERSPs 
+% frqlims -- [minfrq maxfrq] to included from each ersp  (in Hz)
+% nfreqs -- number of freq bins
+% addmat --  matrix of trial indices to PCA down and then add to trial matrix. Full matrix will then be 
+%            submitted to ICA.  Must be (# time/freq points) x (# trials).
+%            Input [] if no matrix to add.
+% 
+% pcmat -- number of PCA dimensions to retain from ERSPs. [] if no PCA on ERSPs.
+% pcctx -- number of PCA dimensions to retain from context matrix. [] if no PCA on context matrix. If 0, then context PCA'd to same # of dims as ERSP (which can be computed as pnts per weight.
+% pcfac -- number of final points per weight for ERSP dims only (over estimate if adding context matrix).
+% freqscale -- [string] 'linear','quad', or 'log' for linear, quadratic or log-spaced freq bins
+% warpdat -- [matrix or vector] row 1: the events surrounding the time-locking event
+%            of each dataset to which to time warp. (ex: [1 3 5], warp to 1st,3rd,5th after tlock ev)
+%            Optional row 2: times for each event in row 1 to warp ERSP data to (if no row 2,
+%            will use the median time for each event.
+% subset -- [number between 0 and 99] Percent of trials to remove from the data before 
+%           decomposition (for later prediction using resulting templates). The indices of 
+%           removed trials will be included in the saved .mat as 'deltrials'.
+% labels -- [cell array of strings] if not empty, specifies the names of the context questions.
+%
+% OUTPUTS:
+% The function results are saved automatically as:
+% 
+%  1) [writepath,wtsphname,'.fdt'] -- This is the full data matrix delivered to ICA
+%  2) [writepath,wtsphname,'EIGVEC.fdt'] -- ERSP templates from PCA.
+%  3) [writepath,wtsphname,'ADDEIG.fdt'] -- Context templates from PCA (if used)
+%  4) [writepath,wtsphname,'.sc'] -- ICA script file (simple text file)
+%  5) [writepath,wtsphname,'.mat'] -- contains all important variables from decomposition:
+%     complist keeptrack freqs times numrows numframes icmean mntfpwr freqscale pcmat pcctx 
+%     pcs cxtmean eigfile cxteigfile
+%
+% Author Julie Onton, Swartz Center for Computational Neuroscience.
+%
+
+function [outpower,freqs,times,keeptrack,wave,alldels,nepochs] = SpectralDecompTW_warp(datset,paths,complist,wtsphname,tmpoints,frqlims,nfreqs,freqscale,warpdat);
+
+deltrials = []; % initialize deleted trials to be null
+cxtmean = [];cxteigfile = [];idxmat = [];
+alldels = []; % initialize in case no time warping
+
+
+if ~exist('freqscale')
+  freqscale = 'quad';
+end;
+
+wave  = [3 .5];
+new = 1;pceigvec = []; addeigvec = [];
+RTs= []; mntfpwr = []; indivmn = [];
+keeptrack = zeros(0,5); % nx,comp,datset,start idx,# trials in that dataset
+RTs = zeros(1,0);
+if ~iscell(datset)
+  datset{1} = datset;
+end;
+
+outpower = [];
+for nx = 1:length(complist)    
+  if ~isempty(complist{nx})            
+    for n = 1:length(complist{nx})
+      if ~isempty(warpdat)% if time warping requested
+        warpvars = zeros(0,size(warpdat,2));
+      end;alldels = [];
+      for ds = 1:length(datset)                         
+        EEG = pop_loadset( datset{ds},paths{nx});
+        EEG=eeg_checkset(EEG);
+        if ~isempty(warpdat)% if time warping requested
+           wvars = zeros(0,size(warpdat,2));
+           deleps = [];% for warping, all events must exist in each trial
+           for ep = 1:length(EEG.epoch)
+              currevs = EEG.epoch(ep).eventtype;% if doubles
+              currtms = cell2mat(EEG.epoch(ep).eventlatency);
+              zeroev = find(currtms == 0); % time-locking event
+              if iscell(warpdat) % passed as event names instead of relative event number
+                 for w = 1:size(warpdat,2) 
+                    allinsts = find(ismember(currevs,warpdat{w}));
+                    if ~isempty(allinsts)
+                       newwarp(1,w) = allinsts(1);
+                    else
+                       newwarp = [];
+                    end;
+                 end;
+              else
+                 newwarp = warpdat(1,:);
+              end;
+              wevs = [];
+              if ~isempty(newwarp) % events were found
+                 for w = 1:size(warpdat,2) % tells which events around 0 to warp
+                    if zeroev+newwarp(1,w) <= length(currtms)  %%%  here need to allow for a type name---*****
+                       wevs = [wevs currtms(zeroev+newwarp(1,w))];
+                    end;
+                 end; 
+              end;
+              if length(wevs) == size(warpdat,2)
+                 wvars(end+1,:) = wevs;
+              else
+                 wvars(end+1,:) = zeros(1,size(warpvars,2));% add temporarily to keep index
+                 deleps = [deleps ep];% delete epochs without all events
+              end;   
+           end;
+           realtrials(ds,nx) = size(EEG.data,3);
+           % find spurious trials:
+           if ~isempty(warpvars)
+              mnlats = mean(warpvars,1);% make continuous with previous
+              stdlats = std(warpvars,1);stdlats = stdlats*3;
+           else
+              allgood = [1:size(wvars,1)]; allgood(deleps) = [];
+              mnlats = mean(wvars(allgood,:),1);% make continuous with previous
+              stdlats = std(wvars(allgood,:),1);stdlats = stdlats*3;
+           end;
+           for ep = 1:size(wvars,1)
+              if length(find(wvars(ep,:) < mnlats + stdlats & wvars(ep,:) > mnlats - stdlats)) < length(mnlats) % must be within 1 std of all latencies
+                 deleps = [deleps ep];% for datset
+              end;
+           end;
+           deleps = unique(deleps);
+           wvars(deleps,:) = [];
+           %EEG = pop_select(EEG,'notrial',deleps); 
+           warpvars(end+1:end+size(wvars,1),:) = wvars;
+           if ds > 1
+              alldels = [alldels, sum(realtrials(1:ds-1,nx))+deleps]; % for context matrix
+           else
+              alldels = [alldels, deleps];
+           end;
+           numtrials(ds,nx) = size(EEG.data,3);
+           if size(warpdat,1) > 1
+              medwarpevs = warpdat(2,:);
+           else
+              medwarpevs = mnlats;
+           end;
+        end;% end if warpdat not empty
+        keepeps = [1:size(EEG.icaact,3)];
+        keepeps(deleps) = [];
+        if ds == 1
+          data = squeeze(EEG.icaact(complist{nx}(n),:,keepeps));
+        else
+          data(:,end+1:end+length(keepeps)) = squeeze(EEG.icaact(complist{nx}(n),:,keepeps));
+        end;
+        if size(keeptrack,1) == 0
+          keeptrack(end+1,:) = [nx,complist{nx}(n),ds,1,length(keepeps)];
+        else
+          keeptrack(end+1,:) = [nx,complist{nx}(n),ds,keeptrack(end,4)+keeptrack(end,5),length(keepeps)];
+        end;
+      end; % for ds loop
+      
+      if ~isempty(warpdat)% if time warping requested
+        [tf, freqs, times, itcvals] = mytimefreq(data, EEG.srate,'cycles',wave, 'tlimits',[EEG.xmin*1000 EEG.xmax*1000],'freqs',frqlims,'nfreqs',nfreqs, 'timesout',tmpoints,'freqscale',freqscale,'timestretch',{warpvars,medwarpevs'});
+      else
+        [tf, freqs, times, itcvals] = mytimefreq(data, EEG.srate,'cycles',wave, 'tlimits',[EEG.xmin*1000 EEG.xmax*1000],'freqs',frqlims,'nfreqs',nfreqs, 'timesout',maketimes,'freqscale',freqscale);
+      end;
+      tf = abs(tf).^2; % freqs x frames(times) x epoch
+      tf = 10*log10(tf);
+      postdels = [];
+      for ep = 1:size(tf,3) % look for zeros
+         if ~isempty(find(isinf(tf(:,:,ep))))
+            postdels = [postdels,ep];
+         end;
+      end;
+      tf(:,:,postdels) = [];
+      deleps = sort([deleps,postdels]);
+      nepochs = size(tf,3);
+      outpower = [outpower,reshape(tf,[size(tf,1) size(tf,2)*size(tf,3)])];
+      
+      fprintf('\nDoneComp: %s of %s\n\n',int2str(n),int2str(length(complist{nx})));
+    end; % to ic loop
+    fprintf('\nDone Subject: %s of %s\n',int2str(nx),int2str(length(paths)));
+  end; % to if not empty 
+end; % to subject loop
+

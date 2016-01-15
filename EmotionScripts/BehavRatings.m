@@ -1,0 +1,118 @@
+
+%% See also:
+%  /data/common1/emotion/BehavRatings/QuantifyZscore.m
+%  for more work on these ratings
+   
+% for emotion ratings by the EEG subjects, see:
+% /home/julie/MatlabScripts/emotion/DescriptStats.m
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% quantify behavioral results from online evaluations
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+allvars = [0;1;2;3;4;5;6;7;8;9;10]; % first col is rating scale
+
+allvars(:,end+1) = [
+% input manually
+% find mean and standard deviation:
+for q = 2:size(allvars,2)
+    mnvals(1,q-1) = sum(allvars(:,1).*allvars(:,q))/sum(allvars(:,q));
+    valvec = [];
+    for v = 1:size(allvars,1)
+        valvec = [valvec repmat(allvars(v,1),[1 allvars(v,q)])];
+    end;
+    stdval(1,q-1) = std(valvec);
+    medvals(1,q-1) = median(valvec);
+end;
+
+evalorder = {'excite','excite','grief','grief','awe','awe','frustration','frustration','content','content','jealousy','jealousy','joy','joy','anger','anger','compassion','compassion','disgust','disgust','happy','happy','fear' ,'fear' ,'love','love','sad','sad','relief','relief'};
+
+
+             
+emos = {'anger','frustration','jealousy','fear' ,'disgust','grief','sad','compassion','love','relief','content','awe','happy','joy','excite'}; % standard emotion order
+% put ratings into separate vectors and in the right emotion order:
+clear emoval valstds emoactiv activstds emomedval emomedactiv
+for q = 1:2:29 
+    eidx = find(ismember(emos,evalorder{q}));
+    allvarordered(:,eidx) = allvars(:,q+1);
+    emomedval(1,eidx)  = medvals(1,q);
+    emoval(1,eidx)  = mnvals(1,q);
+    valstds(1,eidx)  = stdval(1,q);
+end;
+for q = 2:2:30 
+    eidx = find(ismember(emos,evalorder{q}));
+    emomedactiv(1,eidx)  = medvals(1,q);
+    emoactiv(1,eidx)  = mnvals(1,q);
+    activstds(1,eidx)  = stdval(1,q);
+end;
+comment = 'Results are generated from 104 user ratings from an online survey. Results were quantified by a perl script in /data/common2/emotion/BehavRatings/survey.pl and then in Matlab by a script in /home/julie/MatlabScripts/emotion/ProcessData1.m';
+save /data/common1/emotion/BehavRatings/RatingTally.mat allvars allvarordered emomedval emoval valstds emomedactiv emoactiv activstds emos comment
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+% load and plot:   ------------------------------------
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+w=load('/data/common1/emotion/BehavRatings/RatingTally.mat');
+figure;  row = 2; col = 1;  cols = jet(15);cols(10,:) = [1 .9 0];
+sbplot(row,col,1); 
+for e = 1:length(w.emoval)
+    ph = bar(e,w.emoval(e));hold on;set(ph,'facecolor',cols(e,:));
+    plot([e e],[w.emoval(e)-w.valstds(e) w.emoval(e)+w.valstds(e)],'k-');
+    ph=text(e,.5,emos{e}); set(ph,'rotation',90);
+end;set(gca,'xlim',[0 16]);set(gca,'xticklabel',[]);
+title(['Valence']);
+sbplot(row,col,2); 
+for e = 1:length(w.emoactiv)
+    ph = bar(e,w.emoactiv(e));hold on;set(ph,'facecolor',cols(e,:));
+    plot([e e],[w.emoactiv(e)-w.activstds(e) w.emoactiv(e)+w.activstds(e)],'k-');
+    ph=text(e,.5,emos{e}); set(ph,'rotation',90);
+end;set(gca,'xlim',[0 16]);set(gca,'xticklabel',[]);
+title(['Arousal']);
+set(gcf,'PaperOrientation','landscape');set(gcf,'PaperPosition',[0.25 0.25 10.5 8]); 
+
+figure; % scatter plot
+for e = 1:length(labels)
+    ph = plot(w.emoval(e),w.emoactiv(e),'k.');hold on;
+    set(ph,'color',cols(e,:)); set(ph,'markersize',33);
+    ph = text(w.emoval(e),w.emoactiv(e),labels{e});set(ph,'fontsize',20);
+    set(ph,'color',cols(e,:));
+end;
+set(gca,'box','off');
+set(gca,'fontsize',20);
+xlabel('Valence'); ylabel('Arousal');set(gcf,'color','w');
+textsc('Behavior-Only ratings of emotions in 2 dimensions  on a scale from 1 to 10','title');
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%
+% OLD behavioral ratings:--------
+%% Values found in excel spreadsheet in emotion folder too.
+
+act=[7.3000,8.3500,3.9000,4.7000,6.0000,6.8000,3.9000,5.3000,4.2000,5.2000,6.5000,7.3000,7.0000,7.5000, 4.8500];
+
+val=[3.9000,9.1000,3.3000,7.9000,2.6000,9.4000,3.9000,2.4000,8.9000,3.6000,8.3500,9.2000,4.6000,9.6000, 8.1500];
+
+labels = { '  anger'    '  excitement'    '  grief'    '  awe'    '  frustration'    '  joy'  '  sadness'    '  jealousy'    '  content'    '  disgust'    '  compassion'  '  happy'    '  fear'    '  love'    '  relief'};
+
+emos = {' anger',' frustration',' jealousy',' fear' ,' disgust',' grief',' sadness',' compassion',' love',' relief',' content',' awe',' happy',' joy',' excitement'}; % valence ordering
+cols = jet(15);cols(10,:) = [.9 .9 0];
+ for e = 1:15
+     for ee = 1:15
+         if strcmp(emos{e},labels{ee})
+             cols(ee,:) = col(e,:);
+         end;
+     end;
+ end;
+ 
+
+figure;
+for e = 1:length(labels)
+    ph = plot(val(e),act(e),'k.');hold on;
+    set(ph,'color',cols(e,:)); set(ph,'markersize',33);
+    ph = text(val(e),act(e),labels{e});set(ph,'fontsize',20);
+    set(ph,'color',cols(e,:));
+end;
+set(gca,'box','off');
+set(gca,'fontsize',20);
+xlabel('Valence'); ylabel('Arousal');set(gcf,'color','w');
+textsc('Behavior-Only ratings of emotions in 2 dimensions  on a scale from 1 to 10','title');

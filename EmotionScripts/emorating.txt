@@ -1,0 +1,18 @@
+val =[4.15,9.10,3.60,7.85,2.60,9.40,4.05,2.45,8.80,3.85,8.40,9.15,5.00,9.55,8.20];
+act =[7.25,8.30,4.00,4.55,5.75,6.60,4.20,5.20,3.55,5.10,6.05,7.00,7.25,7.15,5.00];
+
+emos = {' Anger',' Excitement',' Grief',' Awe',' Frustration',' Joy',' Sadness',' Jealousy',' Content',' Disgust',' Compassion',' Happy',' Fear',' Love',' Relief'};
+eo = [1,5,8,13,10,3,7,11,14,15,9,4,12,6,2];
+cols = jet(15);
+figure;
+for e=1:length(emos)
+ph=plot(act(eo(e)),val(eo(e)),'.');
+hold on;
+set(ph,'markersize',30);
+set(ph,'color',cols(e,:));
+ph=text(act(eo(e)),val(eo(e)),emos{eo(e)});
+set(ph,'color',cols(e,:)); set(ph,'fontsize',20);
+end;
+
+
+emo2 = {'anger','frustration','jealousy','fear' ,'disgust','grief','sad','compassion','love','relief','content','awe','happy','joy','excite'};

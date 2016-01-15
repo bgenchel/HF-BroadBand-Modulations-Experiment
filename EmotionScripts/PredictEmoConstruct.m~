@@ -1,0 +1,19 @@
+% calls in Emotion data for a single subject and constructs
+% a (IM x time*emo) matrix with a corresponding vector with
+% emotional valence of each time point
+
+function PredictEmoConstruct(datafile,fullpath);
+    
+    
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    s = load([fullpath,datafile,'.mat']);  % load file info
+    sph=floatread([fullpath,datafile,'.sph'],[s.pcs s.pcs],[],0); % load sphere 
+    wts=floatread([fullpath,datafile,'.wts'],[s.pcs s.pcs],[],0); % load weights        
+    ws = wts*sph;    winv = pinv(ws);  % create inverse weight matrix
+    clear wts sph ws 
+    
+    speceig = floatread([fullpaths{nx},s.eigfile],[length(s.rowmeans) s.pcs],[],0);% load pca winv
+    winv = speceig*winv;  % pass ICA winv through PCA winv matrix
+     
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

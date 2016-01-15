@@ -1,0 +1,30 @@
+% plots the low-pass back-projections of emo dimensions with background of full origwinv
+%
+%
+%
+%
+%
+
+function PlotEnvEmoSpace(savedat,fullpaths,origwinv,spaceacts,savewinvs);
+    
+    for nx = 1:length(origwinv)
+        s = load([fullpaths{nx},savedat,'.mat']);  
+       
+        for em = 1:length(s.dstrials)
+            xwidth = round(length(sum(s.dstrials(1:em-1))+1:sum(s.dstrials(1:em)))/40)
+            
+            [outdata,outx] = movav(origwinv{nx}(:,sum(s.dstrials(1:em-1))+1:sum(s.dstrials(1:em))),0,xwidth,0);
+        end;
+        
+            lopassdat = 
+        envdata = env(origwinv{nx}); 
+        
+        f1 = [[1:size(origwinv{nx},2)],[size(origwinv{nx},2):-1:1]];
+        f2 = [envdata(1,:),[envdata(2,size(origwinv{nx},2):-1:1)]];
+        
+        figure;
+        ph = fill(f1,f2,[.92 .92 .92]);hold on;
+        set(ph,'edgecolor',[.92 .92 .92]);
+        %ph = plot([1:size(origwinv{nx},2)],envdata(2,:),'k-','linewidth',2);
+        %ph = plot([1:size(origwinv{nx},2)],envdata(1,:),'k-','linewidth',2);
+        %set(ph,'color',[.75 .75 .75]);

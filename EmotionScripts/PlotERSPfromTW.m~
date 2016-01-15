@@ -1,0 +1,72 @@
+% takes data from ERSP TW decomp and plots
+% will check for whether one or more ICs were included in decomp
+
+function PlotERSPfromTW(savedat,fullpath,dims)
+
+    s = load ([fullpath,savedat,'.mat']);
+    if ~isfield(s,'pcs')
+      s.pcs = s.numrows;
+    end;
+    dat=floatread([fullpath,savedat,'.fdt'],[s.numrows s.numcols],[],0);        
+    sph=floatread([fullpath,savedat,'.sph'],[s.pcs s.pcs],[],0); 
+    wts=floatread([fullpath,savedat,'.wts'],[s.pcs s.pcs],[],0);        
+    ws = wts*sph;   winv = pinv(ws);      
+    
+    speceig = floatread([fullpath,s.eigfile],[s.origdims inf],[],0); % PCA eigvecs
+    %specwts = speceig*winv;  % mix with ICA winv
+    %winv = specwts;    % t*f*nics x npcs, new winv (templates) 
+    
+    if ~exist('dims')
+      dims = [];
+    elseif isempty(dims)
+      dims = [1:size(winv,2)];
+    end;
+    acts = ws*dat;  % npcs x nepochs  (weights)
+    
+    if s.nics > 3
+      row = s.nics;
+      col = 6;
+    elseif s.nics == 1
+      row = 6; col = 6;
+    else
+      row = s.nics*2;
+      col = 6;
+    end;
+    if length(dims) > 6
+      col = 6;
+    else 
+      col = length(dims);
+    end;
+    d = 0; last = 0;
+    clim = max(max(abs(speceig*winv)));
+    for pg = 1:ceil((length(dims)*s.nics)/(row*col))
+      if d+col > s.pcs & last == 0
+        enddim = s.pcs; col = enddim - d;last = 1;
+      elseif d+col > s.pcs & last == 1
+        break;
+      else
+        enddim = d+col;
+      end;
+      figure; pl = 1; c=0; 
+      for ic = 1:s.nics
+        for dim = d+1:enddim
+          onewinv = winv(c+1:c+s.pcmat,dim);
+          ersp = speceig(:,c+1:c+s.pcmat)*onewinv;
+          ersp = reshape(ersp,[length(s.freqs) length(s.times)]);
+          
+          sbplot(row,col,pl);pl = pl+1;
+          if strcmp(s.freqscale,'quad')
+            quadimagesc(s.times,s.freqs,ersp,[-clim clim]);
+          elseif strcmp(s.freqscale,'log')
+            mylogimagesc(s.times,s.freqs,ersp,[-clim clim]);
+          else
+            imagesc(s.times,s.freqs,ersp,[-clim clim]);
+          end;
+          hold on;set(gca,'ydir','norm'); plot([0 0],[get(gca,'ylim')],'k-');
+          title(['IC ',int2str(s.complist(ic)),'; Dim ',int2str(dim)]); 
+        end;      
+        c = c + s.pcmat;
+      end;
+      d = d+col;
+    end;
+    

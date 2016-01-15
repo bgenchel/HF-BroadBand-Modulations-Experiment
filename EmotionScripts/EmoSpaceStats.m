@@ -1,0 +1,161 @@
+% takes mean or decile IM weights from specified subjs/IMs and uses ICA or multi-dimensional scaling to find emo space across subjects
+%
+% [keeptemplates,keepwts] = EmoSpaceStats(emomeans,orivecs,numdims,subjlist,useims,meth,indiv,elimbyrating,njack,ndrop)
+%
+% emomeans -- [cell array] {subj}(IM,emo) or deciles: {subj}(IM,emo,dec)
+% orivecs -- [cell array] vector of 1's and -1's that will orient the 
+%            values in 'emomeans' (ie, these cell arrays must be the same size.
+% subjlist -- [vector] of subject indices to use in analysis
+% useims -- [cell array] of IM indices to use from each subject (ideally, these
+%           are IMs that were clustered into modulator categories.
+% meth -- ['ica' or 'mds'] for ICA and multi-dimensional scaling, respectively
+% numdims -- [integer] number of dimensions to calculate for between subj solution. [] will choose heuristic or for ICA will pca to rank of matrix.
+% indiv -- [1 or 0] if 1, will use straight mean weights, if 0 (for across subject decomposition)
+%                   will normalize each IM mean weights by dividing by the standard dev of that IM.
+% elimbyrating -- ['elim' or 'keepall'] if 'elim', will use subject emotion ratings and eliminate
+%                 emotion median values that correspond to poorly embodied emotions. The values 
+%                 will then be filled in by the mean of all other IMs in the matrix. Therefore,
+%                 this is only appropriate for homogeneous inputs.
+% njack -- [number] number of jack-knife iterations to perform
+% ndrop -- [number] number of samples to drop on each iteration. If not an integer, will assume
+%                   if refers to a percent of the total number of samples.
+%
+% OUTPUT:
+% keeptrack -- [ndims x 2 or 3 columns] if emo mean or median: 2 columns, if deciles: 3 columns
+%              column 2 is the IM index (not all need to be used), column 3 is the decile of IM
+% nsteps -- [number] of steps that ICA (runica) took.
+
+function [keeptemplates,keepwts] = EmoSpaceStats(emomeans,orivecs,numdims,subjlist,useims,meth,indiv,elimbyrating,njack,ndrop)
+
+    fdims = 3;
+    
+    r = load('/data/common1/emotion/SubjRatings.mat');% load just in case 'elim'
+    % 6.4838 +- 2.4025, (mean +- std)
+    
+    nsteps = [];
+    if ~exist('indiv')
+        fprintf('\nPlease specify whether this is a decomposition of a single subject or multiple (indiv = 1 or 0, respectively)\n');
+        return;
+    end;
+    
+    cols = jet(15);cols(10,:) = [.9 .9 0];
+    emo2 = {'  anger','  frustration','  jealousy','  fear' ,'  disgust','  grief','  sad','  compassion','  love','  relief','  content','  awe','  happy','  joy','  excited'};
+    if length(size(emomeans{1})) > 2
+        keeptrack = zeros(0,3);
+    else
+        keeptrack = zeros(0,2);
+    end;
+    % take instead IMs that were specified 
+    collmeans = []; 
+    for nx = 1:length(emomeans)
+        if ~isempty(useims{nx}) & ~isempty(find(ismember(nx,subjlist)))
+            if strcmp(elimbyrating,'elim')
+                elimemos = find(r.ratings{nx} < 5); % 5 is arbitrary, but I think reasonable
+                emomeans{nx}(:,elimemos) = 0; % set to zero
+            end;            
+            for dm = 1:length(useims{nx})
+                if length(size(emomeans{nx})) > 2
+                    tmpmeans =  squeeze(emomeans{nx}(abs(useims{nx}(dm)),:,:)); %  emos x deciles 
+                    collmeans = [collmeans, tmpmeans]; % emos x IMs*ndeciles
+                    keeptrack(end+1:end+size(tmpmeans,2),:) = [repmat(nx,[size(tmpmeans,2) 1]), repmat(useims{nx}(dm),[size(tmpmeans,2) 1]), [1:9]'];
+                else   
+                    if indiv == 1 % if decomp of a single subject
+                        collmeans = [collmeans, emomeans{nx}(abs(useims{nx}(dm)),:)'];% single subject emo space  
+                    else % or else you have to normalize
+                        %collmeans = [collmeans, emomeans{nx}(abs(useims{nx}(dm)),:)'/std(emomeans{nx}(abs(useims{nx}(dm)),:))];% emos x IMs,/std  (across subject) 
+                        collmeans = [collmeans, zscore(emomeans{nx}(abs(useims{nx}(dm)),:))'];% emos x IMs,/std  (across subject) 
+                        if ~isempty(orivecs)% orient by 'onebig' orientation
+                            collmeans(:,end) = collmeans(:,end)*-1;
+                        end;
+                    end;
+                    keeptrack(end+1,:) = [nx, useims{nx}(dm)];
+                end;
+            end;
+        end;
+    end;
+    
+    if strcmp(elimbyrating,'elim')
+        for e = 1:size(collmeans,1)
+            if ~isempty(find(collmeans(e,:) == 0))
+                othermean = mean(collmeans(e,find(collmeans(e,:)))); % mean of all other values
+                zeroidx = find(collmeans(e,find(collmeans(e,:)==0)));
+                for z = 1:length(zeroidx)
+                    collmeans(e,zeroidx(z)) = othermean;
+                end;
+            end;
+        end;
+    end;
+    
+    if ~isinteger(ndrop) % if not an integer, then make it a percent of total
+        ndrop2 = ceil(size(collmeans,2) * ndrop);
+        ndrop = ndrop2;
+    end;
+    
+            
+    allmeans = collmeans;
+    for iter = 1:njack
+        randidx = randperm(size(allmeans,2));
+        collmeans = allmeans; % reinstall full matrix
+        collmeans(:,randidx([1:ndrop])) = [];        
+        
+        if strcmp(meth,'ica')
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            %  Calculate ICA decomposition   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%      
+            if isempty(numdims)
+                numdims = rank(collmeans)-1;
+            end;
+            fdims = numdims;
+            %[wts,sph] = binica( collmeans,'pca',numdims,'extended',1,'stop',1e-7,'maxsteps',2000); 
+            [wts,sph,compvars,bias,signs,lrates,acts] = runica(collmeans,'pca',numdims,'extended',1,'stop',1e-7,'maxsteps',6000);
+            nsteps = length(lrates);
+            ws = wts*sph; winv = pinv(ws); acts = ws*collmeans;
+            fullmd = winv;  fullwts = acts;
+            %fullwts = winv'; fullmd = acts';% for a IM x emotions matrix
+        elseif strcmp(meth,'mds')
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            %  Calculate MD scaling   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
+            dd = pdist(collmeans, 'correlation') ;    
+            %[fullmd,fullwts] = cmdscale(dd);            
+            %fullmd(:,fdims+1:end)= [];
+            
+            [fullmd,fullwts] = mdscale(dd,3,'replicates',200);% need many replicates
+            %eigvals = fullwts; % not returned
+            %clear fullwts
+            %fullwts = pinv(fullmd)*collmeans; %  recover IM weightings
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        elseif strcmp(meth,'pdist')
+            if isempty(numdims)
+                fprintf('/npdist clustering option requires a set number of dimensions to return.\n')
+                return;
+            end;
+            fdims = numdims;
+            alldist = pdist(collmeans, 'correlation'); % euc better than seuc
+            links = linkage(alldist,'complete');       
+            figure;[hnd,idx,perm]=  dendrogram(links,fdims);
+            for cls = 1:max(idx)
+                onecls = find(idx == cls);
+                alltempls{cls} = collmeans(onecls,:);
+                allkeeps{cls} = keeptrack(onecls,:);
+                fullmd(:,cls) = mean(alltempls{cls},1);
+            end;        
+        elseif strcmp(meth,'pca')
+            if isempty(numdims)
+                fprintf('/nPCA option requires a set number of dimensions to return.\n')
+                return;
+            end;
+            fdims = numdims; 
+            out=(collmeans*collmeans')/size(collmeans,2);
+            [V,D] = eig(out);                  % get eigenvectors/eigenvalues
+            [eigenval,index] = sort(diag(D));
+            index=rot90(rot90(index));
+            EigenValues=rot90(rot90(eigenval))';
+            EigenVectors=V(:,index);
+            fullwts = EigenVectors(:,1:numdims)'*collmeans; % weights
+            fullmd = EigenVectors(:,1:numdims); % templates
+        end;
+        keeptemplates(:,:,iter) = fullmd;
+        keepwts(:,:,iter) = fullwts;
+    end;

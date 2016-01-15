@@ -1,0 +1,20 @@
+% takes SpecCoModAnal info and checks for distribution differences between two specified emos
+%
+%
+%
+%
+%
+%
+%
+%
+
+function CheckEmoShifts(savedat,fullpathss,subjlist,emopair);
+    
+    
+    for nx = 1:length(whichfacs)
+        if ~isempty(whichfacs{nx})
+            s = load([fullpaths{nx},savedat,'.mat']);  
+            sph=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.sph'],[s.numtrials s.numtrials],[],0); 
+            wts=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.wts'],[s.pcs s.numtrials],[],0); 
+            icamatall = floatread([fullpaths{nx},savedat,'.fdt'],[s.numtrials s.numframes],[],0);    
+            ws = wts*sph;   winv = pinv(ws);   clear wts sph ws

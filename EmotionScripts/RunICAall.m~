@@ -1,0 +1,30 @@
+%%%%  script to run auto-rejection ica on all emotion subjects.
+
+numsets = [5,6,5,6,5, 5,4,4,9,7,  7,4,5,5,4,  5,5,5,4,5,  5,5,9,6,6,  6,6,6,6,7,  8,5,9,5,8];
+gdchan = [241,248,238,253,250, 244,248,231,250,243, 251,251,180,249,250,  246,237,250,250,251, 250,246,248,240,254, 246,203,252,249,249, 253,236,205,247,254];
+
+for nx = 29:length(gdcomps) 
+    sph=floatread(['/data/common2/emotion/',paths{nx},sphs{nx}],sphsize{nx}); 
+    wts=floatread(['/data/common2/emotion/',paths{nx},wtss{nx}],wtssize{nx}); 
+    for ds = 1:numsets(nx)
+        EEG = pop_loadset( ['emo-',int2str(ds),'-',int2str(gdchan(nx)),'.set'], ['/data/common2/emotion/',paths{nx}]);
+        [ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG);
+        EEG.icaweights=wts; EEG.icasphere=sph;EEG.icawinv=[];
+        [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+        EEG = pop_saveset(EEG, datsets{ds},['/data/common2/emotion/',paths{nx}]);
+        [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+        ALLEEG=[];EEG=[];
+    end;
+end;
+
+eeglab
+for nx = 1:length(paths)
+    for ds = 1:numsets(nx)
+        datset{ds} = ['emo-',int2str(ds),'-',int2str(gdchan(nx)),'.set'];
+    end;
+    wtstem = 'allchan';pcs = gdchan(nx);chancomp = [];
+    datpath = ['/data/common4/emotion/',paths{nx}];
+    [EEG,numframes] = MakeFloats2(datset,datpath,wtstem,gdchan(nx),pcs,chancomp);
+    LinuxICA2(wtstem,datpath,sum(numframes),gdchan(nx),pcs,1);
+  
+end;

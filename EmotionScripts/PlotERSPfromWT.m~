@@ -1,0 +1,164 @@
+% Uses WT spectral decomp and reconstructs an ERSP by
+%
+% [outersp,keeptrack,plotpnts] = PlotERSPfromWT(savedat,datpath,plotdims,condvec,mask,allbigs,plotopt);
+%
+% plotdims -- [vector] dimension indices to plot, each with it's own figure.
+% condvec -- [vector] vector of numbers the same size as the keeptrack,1 to
+% indicate groupings of trials to average and plot separately as distinct
+% conditions. [] will use first column of keeptrack to group conditions.
+% frqlim -- [minfrq maxfrq] frequency limits for plots
+% mask -- ['mask' or 'off] mask reconstructed ERSPs by permutation
+% plotopt -- [place in current figure or 'off'] plot the results(integer) or just return output ('off')
+%            Many conditions will default to place = 1; one condition will plot starting at place with
+%            n columns equal to length(s.complist) and row = col-1;
+%            Enter [] for default plotting parameters and to create a new figure;
+
+function [outersp,keeptrack,plotpnts] = PlotERSPfromWT(savedat,datpath,plotdims,condvec,mask,allbigs,plotopt);
+
+plttype = 'ersp'; % 'time' or 'ersp'
+
+if isempty(plotopt)
+  plotopt = 'off';
+end;
+s = load([datpath,savedat,'.mat']);
+sph=floatread([datpath,savedat,'.sph'],[s.pcs s.pcs],[],0);
+wts=floatread([datpath,savedat,'.wts'],[s.pcs s.pcs],[],0);
+icamatall = floatread([datpath,savedat,'.fdt'],[s.pcs s.numframes],[],0);
+% pcamat = floatread([datpath,savedat,'DAT.fdt'],[length(s.rowmeans) s.numframes],[],0);
+ws = wts*sph;    acts = ws*icamatall;    winv = inv(ws);
+clear wts sph
+speceig = floatread([datpath,s.eigfile],[length(s.rowmeans) s.pcs],[],0);
+specwts = speceig*winv;
+winv = specwts; clear speceig specwts  icamatall
+%ws = pinv(winv);
+
+if isempty(plotdims)
+   plotdims = [1:size(winv,2)];
+end;
+%if isempty(condvec)
+   condidx = s.keeptrack(:,1)';
+%else
+%   condidx = s.keeptrack(find(ismember(s.keeptrack(:,1),condvec)),1)';
+%end;
+
+conds = condvec;
+
+if ~isstr(plotopt)  % plot into existing figure with:
+   row = plotopt(1); col = plotopt(2); place = plotopt(3);
+elseif strcmp(plotopt,'on')
+   figure;place = 1;
+   col = length(s.complist);
+   if length(conds) == 1 % one condition
+      place = 1;
+      row = length(plotdims);
+      if row>col
+         row = col-1;
+      end;
+   else
+      row = length(condvec); % 1 row per condition
+      if row < 4
+        row = row*2;
+      end;
+   end;
+elseif strcmp(plotopt,'off')
+  place = 1;row = 100; col = 100; % don't pop another figure;
+end;
+keeptrack = cell(1,max(plotdims));
+for dm = 1:length(plotdims)
+   dim = plotdims(dm);
+   if place > row*col
+      figure; place = 1;
+   end;
+   for cond = 1:length(conds)
+      pl = 1;epc = 1;
+      %if ntrials == length(condidx) % one condition
+      %   pnts = [1:size(winv,1)];
+      %else
+         pnts = find(condidx == conds(cond));
+      %end;
+      plotpnts = unique(s.keeptrack(pnts,3)); % time points to plot
+      if strcmp(plttype,'time')
+         reersp = winv(pnts,dim);
+         reersp = reshape(reersp,[size(reersp,2)/length(plotpnts) length(plotpnts) ]);
+
+         tmcourse = reersp; % if plotting time course, preserve before taking mean
+      elseif strcmp(plttype,'ersp')
+         reersp = (winv(pnts,dim) * acts(dim,:));
+         reersp = reshape(reersp,[size(reersp,1)/length(plotpnts) length(plotpnts) size(reersp,2) ]);
+         if strcmp(mask,'mask') % create sig mask
+            fprintf('\nCollecting bootstrap statistics for condition %s...\n',int2str(cond));
+            [reersp] = GroupSig(reersp,[],.01,'permt');
+         else
+            reersp = mean(reersp,1); % take the mean!
+            reersp = squeeze(reersp)';
+         end;
+      end;
+      if cond == 1
+        clim = max(max(abs(reersp)));
+      end;
+      if clim == 0
+         clim = 1;
+      end;
+      outersp{dim}{cond} = zeros(length(s.freqs),length(plotpnts),0);
+      for ic = 1:length(s.complist)
+         tpidx = [length(s.freqs)*(ic-1)+1:length(s.freqs)*ic];% one ic
+         if ~isempty(allbigs) % pull out only sig ICs
+            if ismember(s.complist(ic),allbigs{dim})
+               outersp{dim}{cond}(:,:,end+1) = reersp(tpidx,:);
+               if cond == 1
+                  keeptrack{dim} = [keeptrack{dim} s.complist(ic)];
+               end;
+               sbplot(row,col,place);
+               if strcmp(plttype,'ersp')
+                  if strcmp(s.freqscale,'quad')
+                     [realy,labely] = quadimagesc(plotpnts,s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+                  elseif strcmp(s.freqscale,'log')
+                     [realy,labely] = mylogimagesc(plotpnts',s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+                  else % linear
+                     imagesc(plotpnts',s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+                     set(gca,'ydir','norm');
+                  end;
+                  set(gca,'ticklength',[.04 .04]);
+                  ph = plot([0 0],[get(gca,'ylim')],'k-');
+                  if ic ~= 1
+                     set(gca,'yticklabel',[]);
+                  end;
+                  if cond ~= max(condidx)
+                     set(gca,'xtick',[0:500:10000]);
+                     set(gca,'xticklabel',[]);
+                  else
+                     set(gca,'xtick',[0:500:10000]);
+                  end;
+               elseif strcmp(plttype,'time')% plot over-plotted IM time courses
+                  %??
+               end;
+               place = place+1;
+            end;
+         else
+           outersp{dim}{cond}(:,:,end+1) = reersp(tpidx,:);
+            sbplot(row,col,place);
+            if strcmp(s.freqscale,'quad')
+               [realy,labely] = quadimagesc(plotpnts,s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+            elseif strcmp(s.freqscale,'log')
+               [realy,labely] = mylogimagesc(plotpnts',s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+            else % linear
+               imagesc(plotpnts',s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+               set(gca,'ydir','norm');
+            end;
+            set(gca,'ticklength',[.04 .04]);
+            ph = plot([0 0],[get(gca,'ylim')],'k-');
+            if ic ~= 1
+               set(gca,'yticklabel',[]);
+            end;
+            if cond ~= max(condidx)
+               set(gca,'xtick',[0:500:10000]);
+               set(gca,'xticklabel',[]);
+            else
+               set(gca,'xtick',[0:500:10000]);
+            end;
+            title(['D ',int2str(dim),'; ',s.datsets{cond}]);
+            place = place+1;
+         end;
+      end;
+   end;
+end;

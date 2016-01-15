@@ -1,0 +1,39 @@
+%%  For use in clustering spectral factor templates across subjects
+
+eeglab
+emos = {'anger','frustration','jealousy','fear' ,'disgust','grief','sad','compassion','love','relief','content','awe','happy','joy','excite'}; % for all new ones
+str = ['load /data/common4/emotion/GoodComps.mat gdcomps numsets gdchan paths fullpaths']; eval(str);
+datset = {'anger.set','frustration.set','jealousy.set','fear.set' ,'disgust.set','grief.set','sad.set','compassion.set','love.set','relief.set','content.set','awe.set','happy.set','joy.set','excite.set'}; % for all new ones
+frqlim = [0 50];overlap = 2; % 50% overlap(1 sec epochs)
+savedat = 'SpecCoMod';pc=15;
+nx=2;str = ['load ',fullpaths{nx},savedat,'Stuff.mat '];eval(str);  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%  Cluster spectral co-mod templates across subjects
+savedat = 'SpecCoMod';
+clustfacs = []; clustenv = []; mnspecs = []; kptk = [];  pl = 1; 
+incsubjs = [2:21,23:35]; 
+for nxx = 1:length(gdcomps)
+    clear data activations winv  
+    nx = incsubjs(nxx);
+    str = ['load ',fullpaths{nx},savedat,'Stuff.mat '];eval(str);  
+    sph=floatread([fullpaths{nx},savedat,'PC',int2str(pcs),'.sph'],[numtrials numtrials],[],0); 
+    wts=floatread([fullpaths{nx},savedat,'PC',int2str(pcs),'.wts'],[pcs numtrials],[],0); 
+    data = floatread([fullpaths{nx},savedat,'.fdt'],[numtrials numframes],[],0);    
+    ws = wts*sph;    activations = ws*data;    winv = pinv(ws); clear wts sph ws allfacs alltemps
+    for tp = 1:size(activations,1)
+        clear allrms x
+        for rcp = 1:length(gdcomps{nx})
+            alltemps(rcp,:) = activations(tp,length(freqs)*(rcp-1)+1:length(freqs)*rcp); 
+            allrms(rcp) = sqrt(mean(activations(tp,length(freqs)*(rcp-1)+1:length(freqs)*rcp).^2));
+            x(rcp) = var(activations(tp,length(freqs)*(rcp-1)+1:length(freqs)*rcp));
+        end;
+        clustfacs = [clustfacs;alltemps];
+        kptk = [kptk;[repmat(nx,[size(alltemps,1) 1]) gdcomps{nx}']];                    
+        mnspecs = [mnspecs;meanpwr]; 
+    end;
+end;
+save /data/common4/emotion/clustfacs.mat clustfacs alldip kptk freqs allbigs onebig clustenv mnspecs incsubjs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

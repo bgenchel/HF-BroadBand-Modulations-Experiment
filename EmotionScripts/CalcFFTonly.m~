@@ -1,0 +1,289 @@
+% chancomp -- ['chan' or 'comp'] if chan, then 'complist' is considered a list of channels, if 'comp' then 'complist' is considered a list of components
+
+
+function CalcFFTonly(datset,datpath,complist,savedat,frqlim,freqscale,overlap,nfreqs,pwrdecomp,chancomp);
+
+    thresh = 1000000; % threshold for uV auto-rejection (normally 1000)
+    
+    chanlist = [];% for subsampling channels, [] if comps
+    chanidxs = [];% for subsampling channels, [] if comps
+    
+    if ~exist('dec')
+        dec = [];
+    end;
+    if ~exist('pwrdecomp')
+        pwrdecomp = 0;
+    end;
+    EEG = pop_loadset( datset{1},datpath);srate = EEG.srate;% for srate
+    if strcmp(freqscale, 'quad') % make quadratic freq spacing
+      freqs = linspace(sqrt(frqlim(1)), sqrt(frqlim(end)), nfreqs);
+      freqs = freqs.^2;
+    elseif strcmp(freqscale, 'log') % make quadratic freq spacing
+      freqs = linspace(log(frqlim(1)), log(frqlim(end)), nfreqs);
+      freqs = exp(freqs);
+    else % if linear-spacing
+      freqs = linspace(frqlim(1), frqlim(2),nfreqs);
+    end;
+    if length(pwrdecomp) > 2 %if wavelet, specify freq spacing in advance
+        cycles1 = pwrdecomp(1);
+        cycles2 = pwrdecomp(2);
+        winsize = pwrdecomp(3);
+        hwin = hanning(winsize)';
+        wavelets = computepsifamilyQodd(freqs,1/srate,cycles1,cycles2,winsize); % 
+    else % FFT
+        winsize = pwrdecomp;
+        hwin = hanning(winsize)';
+        %hwin = hanning(length(subwin))';
+    end;             
+
+    if ~exist('nfreqs') 
+        nfreqs = frqlim(end)-frqlim(1);        
+    elseif isempty(nfreqs)
+        nfreqs = frqlim(end)-frqlim(1);
+    end;
+
+    
+    rej = 'on'; % 'on' to reject noisy time points    
+    
+    if ~exist('auxpath')
+        auxpath = [];
+    end;
+    
+    for ds = 1:length(datset)
+      EEG = pop_loadset( datset{ds},datpath);srate = EEG.srate;
+      if strcmp(chancomp,'chan') & size(EEG.data,1)>30 & ds==1
+        [subset idx pos] = loc_subsets(EEG.chanlocs, 30, 0, 0);
+        EEG = pop_select(EEG,'channel',subset{1}); % keep only 30
+        chanlist = {EEG.chanlocs.labels};
+        chanidxs = subset{1};
+      else
+        EEG = pop_select(EEG,'channel',subset{1}); % keep only 30
+      end;
+     if isempty(complist)
+        complist = [1:size(EEG.data,1)];
+      end;
+      if size(EEG.data,3) > 1
+        epoched = 'true';
+      else
+        epoched = 'false';
+      end;
+      if length(pwrdecomp)== 1 % FFT
+        epsize = pwrdecomp/2; % must be divisible by 2
+      else
+        epsize = ((pwrdecomp(3)-1)/EEG.srate)/2 + .05;% need to make just > 
+      end;
+      clear dat
+      if strcmp(epoched,'true') % if there are events to speak of
+                                % take windows at specified time points around all events
+                                % keep track of events and peri-event timing.
+      else       
+        if ~isempty(EEG.event)
+          x = EEG.event(1).type;
+        else
+          EEG.event(1).type = 'fake';
+          EEG.event(1).latency = 1;
+          x = EEG.event(1).type;  
+        end;
+        %%%%%%%%%%  Divide continuous data into ? sec epochs:
+        fprintf('\nCreating %s sec epochs...\n',int2str(round(epsize*2)));
+        for evtm = epsize*EEG.srate:round((epsize*2*EEG.srate)/overlap):size(EEG.data,2)-epsize*EEG.srate
+          % create events to make overlapping ? sec epochs
+          EEG.event(end+1) =  EEG.event(1);% appends events to the end
+          EEG.event(end).latency = evtm;
+          if ischar(x)
+            EEG.event(end).type = 'fake';% for string event codes  
+          else
+            EEG.event(end).type = 1000;% for string event codes 
+          end;
+        end;
+        if ischar(x)
+          EEG = pop_epoch( EEG,{'fake'} , [-epsize epsize]);% was-1 1 recently
+        else
+          EEG = pop_epoch( EEG,{1000} , [-epsize epsize]);
+        end;        
+        %EEG = pop_rmbase( EEG,[EEG.xmin*1000 EEG.xmax*1000]);
+        EEG = eeg_checkset(EEG);
+      end;
+      %%%%%%%  Run automatic rejection on newly epoched data:
+      %-------------------------------------------------------
+      % probability and kurtosis are based on standard deviations, 
+      % so iterative rejection is useful
+      if strcmp(rej,'on') % if rejection set to 'on'
+        fprintf('\nRunning auto-rejection protocol...\n');
+        rmep = zeros(1,0);
+        alleps = [1:size(EEG.icaact,3)];
+        EEG = pop_eegthresh(EEG,1,[1:size(EEG.data,1)] ,-thresh,thresh,EEG.xmin,EEG.xmax,0,0);
+        numrej = length(find(EEG.reject.rejthresh));  % count number of epochs marked
+        if numrej > 0
+          if numrej > size(EEG.data,3)
+            fprintf('\nThreshold rejection has found more than half of your epochs to be artifact. Consider increasing the uV threshold and running again\n');
+            return;
+          else
+            rmep(1,end+1:end+length(find(EEG.reject.rejthresh))) = alleps(find(EEG.reject.rejthresh));
+            alleps(find(EEG.reject.rejthresh)) = [];        
+            EEG = pop_rejepoch( EEG,EEG.reject.rejthresh,0); % actually reject high prob epochs
+          end;
+        end;
+        %--------------------------------------------
+        
+        startlim = 4.5; % start probability threshold that will be up'ed if too many trials found
+        maxrej = 40;
+        EEG = pop_jointprob(EEG,0,complist ,startlim,startlim,0,0);% calculate component probabilities
+        numrej = length(find(EEG.reject.icarejjp));  % count number of epochs marked
+        if numrej < maxrej
+          rmep(1,end+1:end+length(find(EEG.reject.icarejjp))) = alleps(EEG.reject.icarejjp);
+          alleps(EEG.reject.icarejjp) = [];
+          EEG = pop_rejepoch( EEG,EEG.reject.icarejjp,0); % actually reject high prob epochs
+        else
+          fprintf('Re-adjusting probability limits and running again...*************************\n');
+          startlim = startlim + .5;
+        end;                    
+        repeat = 1; maxiter = 0; 
+        while repeat == 1 % keep running probability until there are no epochs above threshold
+          if numrej > 0
+            EEG = pop_jointprob(EEG,0,complist ,startlim,startlim,0,0);                    
+            numrej = length(find(EEG.reject.icarejjp));
+            if numrej < maxrej
+              rmep(1,end+1:end+length(find(EEG.reject.icarejjp))) = alleps(EEG.reject.icarejjp);
+              alleps(EEG.reject.icarejjp) = [];
+              EEG = pop_rejepoch( EEG,EEG.reject.icarejjp,0);
+              fprintf('\nep mat: %s,\tdat mat: %s\n',int2str(length(alleps)),int2str(size(EEG.icaact,3)));
+            else
+              startlim = startlim + .5; EEG.reject.icarejjp = [];EEG.reject.rejjpE = [];
+              fprintf('Re-adjusting probability limits and running again...*************************\n');
+            end;                    
+          else
+            if startlim > 5 & maxiter < 8 % don't decrease and startover more than 8 times
+              fprintf('Decreasing probability limits for final pruning...###########################\n');
+              startlim = startlim - .5; numrej = 1; maxiter = maxiter+1; % repeat process back to 5 stds
+            else
+              if maxiter > 8
+                maxrej = 100; % go through last round with a high threshold
+              else                
+                repeat = 0;
+              end;              
+            end;            
+          end; 
+        end;       
+        % run kurtosis check
+        EEG = pop_rejkurt(EEG,0,complist ,6,6,0,0);        
+        numrej = length(find(EEG.reject.icarejkurt));  % count number of epochs marked
+        if numrej > 0
+          rmep(1,end+1:end+length(find(EEG.reject.icarejkurt))) = alleps(EEG.reject.icarejkurt);
+          alleps(EEG.reject.icarejjp) = [];
+          EEG = pop_rejepoch( EEG,EEG.reject.icarejkurt,0);
+        end;
+        %--------------------------------------------
+        
+        rmat(rmep) = 1;
+        rmepochs{ds} = rmep; % keep track of which epochs you removed
+        EEG.icaact = [];
+        EEG = eeg_checkset(EEG);
+      else
+        rmepochs = [];
+      end; % end to rejection step
+      
+      
+      dstrials(1,ds) = size(EEG.data,3); 
+      if strcmp(chancomp,'comp')
+        %%%%  Choose only component activations of interest
+        for cp = 1:length(complist)
+          multfact = sqrt(mean(EEG.icawinv(:,complist(cp)).^2));
+          dat(cp,:,:) = EEG.icaact(complist(cp),:,:)*multfact; % added multfact back 12-6-05
+        end;
+      elseif strcmp(chancomp,'chan')
+        for cp = 1:length(complist)
+          dat(cp,:,:) = EEG.data(complist(cp),:,:); 
+        end;          
+        
+      end
+      
+      if ds == 1
+        alldat = dat;            
+      else
+        alldat(:,:,end+1:end+size(dat,3)) = dat;
+      end;
+      if ds == 1
+        keeptrack(ds,:) = [1 size(dat,3)];
+      else
+        keeptrack(ds,:) = [keeptrack(ds-1,2)+1 keeptrack(ds-1,2)+size(dat,3)];
+      end;
+    end;  clear dat
+
+    epsize = size(alldat,2); % for saving later 
+    %%%%%%%%%%%%%%%%  Begin decompostion of single epochs  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    eplength = size(alldat,2);
+    if length(pwrdecomp)  == 1 % FFT using pwelch          
+        fprintf('\nCalculating pwr for each %s second epoch...\n',num2str(pwrdecomp));
+        %hwin = hanning(size(alldat,2))';
+        %fprintf('\nUsing hanning windowed data...\n');
+        % to get number of freqs:
+        pwr = zeros(size(alldat,3),length(freqs),size(alldat,1));
+        for cp = 1:length(complist)
+            for epoch = 1:size(alldat,3)
+                [pwr(epoch,:,cp) frqs] = pwelch(double(alldat(cp,:,epoch)),size(alldat,2),size(alldat,2)-1,freqs,EEG.srate); 
+                pwr(epoch,:,cp) = 10*log10(pwr(epoch,:,cp));% need to convert to log for 'modulator' interpretation
+            end;   
+            fprintf('\nIC %s done...',int2str(cp));
+        end;
+    elseif length(pwrdecomp) > 2 % use wavelet decomp
+        if size(alldat,2) > winsize
+            ndiff = size(alldat,2) - winsize;
+            rempnts1 = floor(ndiff/2);
+            rempnts2 = ceil(ndiff/2);
+            if rempnts2 == 1
+                alldat = alldat(:,1:end-rempnts2,:,:);
+            elseif rempnts2 > rempnts1
+                alldat = alldat(:,rempnts2:end,:);
+                alldat = alldat(:,1:end-rempnts2,:);
+            else                    
+                alldat = alldat(:,rempnts2:end,:);
+                alldat = alldat(:,1:end-(rempnts2-1),:);
+            end;
+        end;
+        epsize = size(alldat,2); % for saving later 
+        pwr = zeros(size(alldat,3),length(freqs),size(alldat,1));
+        fprintf('\nCalculating pwr for each %s second epoch...\n',num2str(size(alldat,2)/srate));
+        for cp = 1:size(alldat,1)
+            pwr1 = wavelets * (squeeze(alldat(cp,:,:))); 
+            pwr1 = pwr1.*conj(pwr1); % pwr1 is now non-complex
+            pwr1 = 10*log10(pwr1);% convert to log for 'modulator' interpretation
+            pwr(:,:,cp) = pwr1'; clear pwr1
+            fprintf('\nIC %s done...',int2str(cp));
+        end;
+    end; % to decision of decomp method
+
+    % calculate mean spectrum from all comps  
+    for cp = 1:size(pwr,3)
+        meanpwr(cp,:) = squeeze(mean(pwr(:,:,cp),1));
+    end;
+    
+    clear alldat
+    % subtract mean spectrum   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    fprintf('\nRemoving mean spectral power for each component...\n');
+    for cp = 1:size(pwr,3)
+        pwr(:,:,cp) = pwr(:,:,cp) - repmat(meanpwr(cp,:),[size(pwr,1) 1]);
+    end;    
+    pwr = reshape(pwr,size(pwr,1),size(pwr,2)*size(pwr,3));
+    fprintf('\nRemoving mean for each window (all comps)...\n');
+    for tt = 1:size(pwr,1)
+        rowmeans(tt,:) = mean(pwr(tt,:)); % collect the means taken out for future reference
+        pwr(tt,:) = pwr(tt,:) - mean(pwr(tt,:)); % take out mean of each row (all comps)
+    end; 
+     
+
+    fprintf('\nSaving spectral data as %sDAT.fdt\n',savedat);
+    floatwrite(pwr, [datpath,savedat,'DAT.fdt']);
+    
+    
+     if length(pwrdecomp) > 2
+        method = 'wavelet';
+    else
+        method = 'FFT';
+    end;
+    numrows = size(pwr,1); 
+    numframes = size(pwr,2);
+    
+    str = ['save ',datpath,savedat,'.mat epsize method meanpwr numrows numframes freqs freqscale keeptrack rmepochs dstrials rowmeans complist overlap datset  chanlist chanidxs'];eval(str);    
+    
+    fprintf('\ndone.\n');

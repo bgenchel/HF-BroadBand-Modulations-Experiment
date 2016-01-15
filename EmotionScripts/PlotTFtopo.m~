@@ -1,0 +1,55 @@
+% creates a movie of stimulus-locked activations over time
+%
+%
+%
+% datset -- [string] name of stim-locked, epoched dataset to image
+% fullpath -- [cell array] of strings with full paths to subject directories
+% gdcomps -- [cell array] of vectors with brain components to 
+%            back-project and image.
+% avglocs -- [EEG.chanlocs structure] use chan labels/locations to
+%            interpolate all chans from all subjects
+% tmlims -- [min max] time limits to plot in tftopo. 
+% savefile -- [string] full path and name (with .mat) to save all subj TF data in
+% TFois = Array of time/frequency points at which to plot topoplot() maps.
+%                 Size: (nrows,2), each row given the [ms Hz] location 
+%                 of one point. Or size (nrows,4), each row given [min_ms
+%                 max_ms min_hz max_hz].
+
+function [maxmap] = PlotTFtopo(datset,fullpaths,gdcomps,locs,chansubset,tmlims,frqlim,baselims,subjsave,TFois,maxmap)
+
+ntmpts = 200;
+tmpoints = [tmlims(1)+1:(tmlims(2)-tmlims(1))/ntmpts:tmlims(2)];
+
+figure; % only one figure
+for nx = 1:length(gdcomps)
+  if ~isempty(gdcomps{nx})
+    try % already have TF stuff calculated:
+      fprintf('\nFile %s%s.TF.mat exists, will not recalculate.\n',fullpaths{nx},subjsave)
+      str = ['load ',fullpaths{nx},subjsave,' ersp itc powbase erspboot itcboot times freqs']; eval(str);
+    catch
+      EEG = pop_loadset('filename',datset,'filepath',fullpaths{nx});
+      allother = [1:size(EEG.data,1)];
+      allother(gdcomps{nx}) = [];
+      EEG = pop_subcomp( EEG, allother, 0);
+      if size(EEG.data,1) < length(locs)
+        EEG = pop_interp(EEG, locs, 'spherical');
+      end;
+      % calculated t/f for all channels
+      for chh = 1:length(chansubset)
+        ch = chansubset(chh);
+        [ersp(:,:,chh),itc(:,:,chh),powbase(:,chh),times,freqs,erspboot,itcboot] = newtimef(EEG.data(ch,:,:), EEG.pnts, [EEG.xmin*1000 EEG.xmax*1000], EEG.srate, [3 .5],'baseline',baselims,'timesout',tmpoints, 'freqs',frqlim,'freqscale','log','newfig','off');clf;
+        chanlist{chh} = EEG.chanlocs(chh).labels;
+      end;
+      str = ['save ',fullpaths{nx},subjsave,' ersp itc powbase erspboot itcboot chanlist times freqs']; eval(str);
+    end;
+    if ~exist('alldat')
+      alldat = zeros(length(freqs),length(times),length(chansubset),0);
+    end;      
+    alldat(:,:,:,end+1) = ersp;
+  end;
+end;
+
+if isempty(maxmap)
+  maxmap = max(max(max(mean(alldat,4))));
+end;
+figure;tftopo(alldat,times,freqs, 'timefreqs', TFois, 'chanlocs',locs,'logfreq','on','limits',[times(1) times(end),freqs(1), freqs(end),-maxmap,maxmap],'electrodes','off');

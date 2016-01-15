@@ -1,0 +1,129 @@
+% Uses WT spectral decomp and reconstructs an ERSP by 
+%
+% [outersp,keeptrack,plotpnts] = PlotERSPfromWT(savedat,datset,datpath,plotdims,mask,allbigs,plotopt);
+%
+% plotdims -- [vector] dimension indices to plot, each with it's own figure.
+% frqlim -- [minfrq maxfrq] frequency limits for plots
+% mask -- ['on' or 'off] mask reconstructed ERSPs by permutation
+% plotopt -- ['on' or 'off] plot the results('on') or just return output ('off')
+
+function [outersp,keeptrack,plotpnts] = PlotCrossERSPfromWT(savedat,datset,datpath,plotdims,mask,allbigs,plotopt);
+    
+    
+    
+    EEG = pop_loadset(datset, datpath);
+    s = load([datpath,savedat,'.mat']);  
+    sph=floatread([datpath,savedat,'.sph'],[s.pcs s.pcs],[],0); 
+    wts=floatread([datpath,savedat,'.wts'],[s.pcs s.pcs],[],0);        
+    icamatall = floatread([datpath,savedat,'.fdt'],[s.pcs s.numframes],[],0);    
+   % pcamat = floatread([datpath,savedat,'DAT.fdt'],[length(s.rowmeans) s.numframes],[],0);    
+    ws = wts*sph;    acts = ws*icamatall;    winv = inv(ws); 
+    clear wts sph  
+    speceig = floatread([datpath,s.eigfile],[length(s.rowmeans) s.pcs],[],0);
+    specwts = speceig*winv;  
+    winv = specwts; clear speceig specwts  icamatall 
+    %ws = pinv(winv);
+    
+    if isempty(plotdims)
+        plotdims = [1:size(winv,2)];
+    end;
+    
+    condidx = s.keeptrack(:,2)';
+
+    conds = unique(condidx);  
+    if length(conds) < 10 % if more than 10, 1st column of keeptrack not conds
+        for cc = 1:length(conds)
+            cnd = conds(cc);
+            ntrials(cc) = length(find(condidx == cnd));
+            outersp{cc} = cell(1,max(plotdims));
+        end;
+        plotpnts = unique(s.keeptrack(:,4)); % time points to plot 
+    else
+        ntrials = length(condidx);
+        plotpnts = unique(s.keeptrack(:,4));
+        outersp{1} = cell(1,max(plotdims));
+        
+    end;
+    % condttls = s.datset;
+    
+    figure; place = 1; 
+    col = length(s.complist);        
+    if ntrials == length(condidx) % one condition
+        row = col - 1;
+    else            
+        row = length(ntrials);
+    end;
+    keeptrack = cell(1,max(plotdims));;
+    for dm = 1:length(plotdims)
+        dim = plotdims(dm);
+        if strcmp(plotopt,'on') & ntrials ~= length(condidx) % many conditions
+            figure;place = 1;  
+         elseif strcmp(plotopt,'off') & ntrials ~= length(condidx) % many conditions
+            clf;place = 1;  
+        elseif ntrials == length(condidx)& strcmp(plotopt,'on')% one condition
+            if place > row*col
+                figure; place = 1;
+             end;
+        elseif ntrials == length(condidx)& strcmp(plotopt,'off')
+            clf;place = 1;           
+        end; % keep same figure if all one condition
+        for cond = 1:length(ntrials)
+            outersp{cond}{dim} = zeros(length(s.freqs),length(plotpnts),0);
+            pl = 1;epc = 1; 
+            if ntrials == length(condidx) % one condition
+                pnts = [1:size(winv,1)];
+            else% many conditions
+                pnts = find(condidx == conds(cond));
+            end;
+            reersp = (winv(pnts,dim) * acts(dim,:))';
+            reersp = reshape(reersp,[size(reersp,1) ntrials(cond)/length(plotpnts) length(plotpnts)]);
+
+            
+            %reersp = reshape(reersp,[size(reersp,1) length(plotpnts) ntrials(cond)/length(plotpnts)]);% from ERSP reconstruction
+            if strcmp(mask,'on') % create sig mask
+                fprintf('\nCollecting bootstrap statistics for condition %s...\n',int2str(cond));
+                [reersp] = GroupSig(reersp,[],.01,'permt');  
+            else
+                reersp = mean(reersp,2); % take the mean!
+                reersp = squeeze(reersp);
+            end;
+            clim = max(max(abs(reersp)));
+            if clim == 0
+                clim = 1; 
+            end;
+            
+            for ic = 1:length(s.complist)
+                sbplot(row,col,place);
+                tpidx = [length(s.freqs)*(ic-1)+1:length(s.freqs)*ic];% one ic
+                if ~isempty(allbigs) % pull out only sig ICs
+                    if ismember(s.complist(ic),allbigs{dim}) 
+                        outersp{cond}{dim}(:,:,end+1) = reersp(tpidx,:);
+                        if cond == 1
+                            keeptrack{dim} = [keeptrack{dim} s.complist(ic)];
+                        end;
+                    end;
+                end;
+                if strcmp(s.freqscale,'quad')
+                    [realy,labely] = quadimagesc(plotpnts,s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+                elseif strcmp(s.freqscale,'log')
+                    [realy,labely] = mylogimagesc(plotpnts',s.freqs,reersp(tpidx,:),[-clim clim]); hold on;
+                end;
+                set(gca,'ticklength',[.04 .04]);
+                ph = plot([0 0],[get(gca,'ylim')],'k-');
+                if pl <= col
+                    title([int2str(s.complist(1,ic)),'-',int2str(s.complist(2,ic))]);
+                end;
+                if ic ~= 1 
+                    set(gca,'yticklabel',[]);
+                end;
+                if cond ~= max(condidx)
+                    set(gca,'xtick',[0:400:1000]);
+                    set(gca,'xticklabel',[]);
+                else
+                    set(gca,'xtick',[0:400:1000]);
+                end;
+                place = place+1;
+            end;
+        end;
+        textsc([datpath(end-4:end-1),'; Dimension ',int2str(dim)],'title');
+    end;

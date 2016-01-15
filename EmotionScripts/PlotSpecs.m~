@@ -1,0 +1,51 @@
+%  Plots spectra of specified components from each subject superimposed
+%
+% [] = PlotSpecs(datfile,datpath,complist,origlist,frqlim)
+%
+% datfile -- [string] filename for each subject containing spectral data and freqs
+%            assumes output from 'CalcSpectra.m'
+% datpath -- [string] path for datfile to plot (one subplot per subject)
+% complist -- [cell array of vectors] vector for each subject in datfile cell array containing component indices to plot. input a [] for subjects NOT to plot
+% origlist -- all components in spectra matrix to plot correct subsets of comps if specified in 'complist'
+% frqlim -- [minfrq maxfrq] If specified, will plot only these freqs, all freqs if []
+% Will plot all subplots on one page.
+%
+function  PlotSpecs(datfile,datpath,complist,origlist,frqlim);
+    figure; pl = 1; count = 0;
+    for x = 1:length(complist)
+        if ~isempty(complist{x})
+            count = count+1;
+        end;
+    end;
+    row = ceil(sqrt(count)); col = round(sqrt(count));
+    s = load([datpath,datfile]);
+    if isempty(frqlim)
+        fr = [1:length(s.freqs)];
+    else
+        fr = find(s.freqs > frqlim(1) & s.freqs < frqlim(2));
+    end;    
+    for nx = 1:length(s.allspec)
+        if ~isempty(complist{nx})
+            plotcomps = find(ismember(origlist{nx},complist{nx}));
+            cols = cool(length(plotcomps));
+            allmx=zeros(1,0); allmn = zeros(1,0);
+            sbplot(row,col,pl);
+            for cp = 1:length(plotcomps)
+                onespec = s.allspec{nx}(plotcomps(cp),fr);                
+                ph = plot(s.freqs(fr),onespec,'k-'); hold on;
+                set(ph,'color',cols(cp,:)); set(ph,'linewidth',1.5);
+                allmx(1,end+1) = max(onespec(:));
+                allmn(1,end+1) = min(onespec(:));
+            end;
+            mnlim = min(allmn(:));
+            mxlim = max(allmx(:));
+            set(gca,'xlim',[s.freqs(fr(1)) s.freqs(fr(end))]);
+            set(gca,'ylim',[mnlim mxlim]);
+            title(['Subj ',int2str(nx)]); pl = pl+1;
+        end;
+    end;
+    axcopy
+                
+        
+        
+        

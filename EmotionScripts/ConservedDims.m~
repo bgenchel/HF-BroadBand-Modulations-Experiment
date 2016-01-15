@@ -1,0 +1,52 @@
+% takes a full matrix of emotions x factors*subjects and iteratively finds the most conserved
+% dimensions by different combinations of subjects included
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+function ConservedDims(fullmat,subjlist,iternum)
+  
+    keyboard
+    [weights,sphere,compvars,bias,signs,lrates,activations] = runica(fullmat,'extended',1,'stop',1e-8);
+    ws = weights*sphere; fullwinv = pinv(ws); clear ws weights sphere activations
+    
+    allkeeps = cell(1,0);
+    justsubj = unique(subjlist);
+    shuffvec = [1:length(justsubj)];
+    for mn = 1:length(justsubj)/2
+        allwinvs = zeros(size(fullwinv,1),size(fullwinv,2),0);
+        keepdims = zeros(1,0);
+        goodsubj = zeros(0,2);
+        triedpairs = zeros(0,2);
+        corrpairs = zeros(0,2);
+        for itt = 1:iternum
+            randselec = shuffle(shuffvec);
+            takeout = randselec(1:mn);
+            to = justsubj(takeout);
+            tmpmat = fullmat;
+            tmpmat(:,find(ismember(subjlist,to))) = [];
+             [weights,sphere] = binica( tmpmat, 'extended',1,'stop',1e-7,'pca',15,'verbose','on');
+            %[weights,sphere,compvars,bias,signs,lrates,activations] = runica(tmpmat,'extended',1,'stop',1e-8,'pca',15);
+            ws = weights*sphere; winv = pinv(ws); clear ws weights sphere activations
+            
+            allwinvs(:,:,itt) = winv;
+            [corr,indx,indy,corrs] = matcorr(allwinvs(:,:,itt)',fullwinv');
+            js = justsubj;
+            js(takeout) = [];
+            triedpairs(end+1,:) = js;
+            corrpairs(end+1,:) = max(abs(corr));
+            if ~isempty(find(corr > .8))
+                goodsubj(end+1,:) = js;
+            end;
+            hicorrs = indy(find(corr > .99));
+            keepdims(end+1:end+length(hicorrs)) = hicorrs';
+        end;
+        allkeeps{mn} = unique(keepdims);
+    end;
+    

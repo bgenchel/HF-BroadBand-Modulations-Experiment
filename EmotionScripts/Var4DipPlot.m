@@ -1,0 +1,78 @@
+% this is just to save space in my ClustCoMods.m script
+% creates the necessary variables for comodulation plots with 
+% dipole weights applied
+% usage:
+%   [facvec,comods,wtsmat1,justcomps,jcwts,denslist,denswts] = Var4DipPlot(finalidx,allbigs,bigwts,orivec);
+%
+function [facvec,comods,wtsmat1,justcomps,jcwts,denslist,denswts] = Var4DipPlot(finalidx,allbigs,bigwts,orivec);
+
+    
+    
+    for cls = 1:length(finalidx)
+        facvec{cls} = cell(1,length(allbigs));
+        if ~isempty(finalidx{cls})
+        for nx = 1:max(finalidx{cls}(:,1))
+            facvec{cls}{nx} = abs(finalidx{cls}(find(finalidx{cls}(:,1) == nx),2));
+        end;
+        end;
+    end;
+    %***********************
+    clear comods justcomps wtsmat1 jcwts denslist
+    for cls = 1:length(finalidx)
+        denslist{cls} =cell(1,length(facvec{cls}));
+        denswts{cls} =cell(1,length(facvec{cls}));
+        if ~isempty(finalidx{cls})
+        for nx = 1:max(finalidx{cls}(:,1))
+            denslist{cls}{nx} = [];denswts{cls}{nx} = [];
+            pl = 1; usedim = []; jc = zeros(1,0);jw = zeros(1,0);
+            if ~isempty(find(finalidx{cls}(:,1) == nx))
+                subtemps = abs(finalidx{cls}(find(finalidx{cls}(:,1) == nx),:));
+                for im = 1:size(subtemps,1)
+                    currim = subtemps(im,2);
+                    if size(subtemps,2) < 3% if no comps specified, plot all bigs
+                        comods{cls}{nx}{1} = allbigs{nx}{currim};
+                        denslist{cls}{nx} =  allbigs{nx}{currim};
+                        denswts{cls}{nx} = bigwts{nx}{currim};
+                        wtsmat1{cls}{nx}{pl} = ones(1,length(allbigs{nx}{currim}));
+                        usedim = [usedim currim];
+                    else   
+                        if length(find(subtemps(:,2) == currim)) > 1 & ~ismember(currim,usedim) % if im appears more than once in subtemps (comod)
+                            comods{cls}{nx}{pl} = subtemps(find(subtemps(:,2) == currim),3)';
+                            denslist{cls}{nx} = [denslist{cls}{nx} subtemps(find(subtemps(:,2) == currim),3)'];
+                            ex = find(ismember(allbigs{nx}{currim},subtemps(find(subtemps(:,2) == currim),3)'));
+                            
+                                                       
+                            wtsmat1{cls}{nx}{pl} = abs(bigwts{nx}{currim}(ex).*orivec{nx}{currim}(ex));
+                            
+                            
+                            denswts{cls}{nx} = [denswts{cls}{nx} bigwts{nx}{currim}(ex)];
+                                usedim = [usedim currim];
+                            comods{cls}{nx}{pl} = unique(comods{cls}{nx}{pl});
+                            pl = pl+1;
+                        elseif length(find(abs(subtemps(:,2)) == currim))==1 & ~ismember(currim,usedim)
+                            jc(end+1) = subtemps(find(subtemps(:,2) == currim),3);
+                            
+                            ex = find(ismember(allbigs{nx}{currim},subtemps(find(subtemps(:,2) == currim),3)'));
+                            jw(end+1) = abs(bigwts{nx}{currim}(ex).*orivec{nx}{currim}(ex));
+                            denslist{cls}{nx} = [denslist{cls}{nx} subtemps(find(subtemps(:,2) == currim),3)'];
+                            denswts{cls}{nx} = [denswts{cls}{nx} bigwts{nx}{currim}(ex)];
+                        end;
+                    end;
+                end;                
+                %denslist{cls}{nx} = [denslist{cls}{nx} unique(jc)];
+                [justcomps{cls}{nx},x,y] = unique(jc);
+                jcwts{cls}{nx} = jw(x);
+            else
+                denslist{cls}{nx} = [];
+                denswts{cls}{nx} = [];
+                comods{cls}{nx}{pl} = [];
+                wtsmat1{cls}{nx}{pl} = [];
+                jcwts{cls}{nx} = [];
+                justcomps{cls}{nx} = [];
+            end;
+            %denslist{cls}{nx} = unique(denslist{cls}{nx});
+            end;
+        end;
+    end;
+
+    

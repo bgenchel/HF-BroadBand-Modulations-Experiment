@@ -1,0 +1,89 @@
+% Plot results from SnglTrialERSPDecomp.m using NO context
+%
+% PlotTWsnglTrialERSP(pathname,savedat,savename,plotmax);
+%
+% INPUTS:
+% pathname: [string] full path where wts, sph can be found and savename will be saved
+% wtsphname: [string] Name of weights/sphere float file that can be found in pathname (same as name
+%                     given to SnglTrialERSPDecomp.m)
+% savename: [string] or [] If not empty, will save the generated plot as a jpg in the pathname directory
+% plotmax: [integer] number of dimensions to plot. [] for all.
+
+function PlotTWsnglTrialERSP(pathname,savedat,savename,plotmax);
+    
+    fs = 14; % fontsize
+%%%  Do this for all  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    s = load([pathname,savedat,'.mat']);     
+    wts = floatread([pathname,savedat,'.wts'],[s.pcersp s.pcersp],[],0);
+    sph = floatread([pathname,savedat,'.sph'],[s.pcersp s.pcersp],[],0);     
+    ws = wts*sph;winv = pinv(ws);
+    if isfield(s,'pcersp')
+        if s.pcersp > 0               
+            erspeig = floatread([pathname,savedat,'EIGVEC.fdt'],[length(s.freqs)*length(s.times) s.pcersp],[],0);
+            ersptmpl = erspeig*winv(1:s.pcersp,:);  % templates   
+            winv = ersptmpl;
+        end;
+    end;
+    %%%%%%  Check for log frequency spacing  %%%%%%%%%%%%%%%%
+    
+    if isfield(s,'freqscale')
+        freqscale = s.freqscale;
+    else 
+        fprintf('\nError: .mat files must include a "freqscale" field\n'); return;
+    end;
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    
+    if ~exist('plotmax')
+        plotmax = s.pcs;
+    elseif isempty(plotmax)
+        plotmax = 25;% plot max 25 per page
+        if plotmax > size(winv,2)
+            plotmax = size(winv,2);
+        end;
+    end;
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    
+    %%%%%%%%% Plot Reg ERSP factors onto one page %%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    row = round(sqrt(plotmax));
+    col = ceil(sqrt(plotmax));
+    figure;pl = 1; ms = 4;
+    for template = 1:plotmax
+        if pl > row * col 
+            ph = textsc([savedat,'; ERSP decomposition'],'title'); set(ph,'fontsize',fs);
+            figure; pl=1;
+        end;            
+        cnt = 0;
+        tmpcomp = winv (1:length(s.freqs)*length(s.times),template)';  %makes a freqs*times X 1
+        lim = max(abs(tmpcomp))+.1*max(abs(tmpcomp));
+        tmpcomp = reshape(tmpcomp,length(s.freqs),length(s.times));  %Good
+        sbplot(row,col,pl); pl = pl+1;
+        if strcmp(freqscale,'quad')
+            quadimagesc(s.times, s.freqs, tmpcomp,[-lim lim]);hold on;
+        elseif strcmp(freqscale,'log')                
+            mylogimagesc(s.times, s.freqs, tmpcomp,[-lim lim]);hold on;
+        else
+            imagesc(s.times, s.freqs, tmpcomp,[-lim lim]);hold on;               
+            set(gca,'ytick',[10:10:s.freqs(end)]);
+        end;
+        set(gca,'ydir','norm'); set(gca,'ticklength',[.02 .02]);
+        hold on; plot([0 0],[get(gca,'ylim')],'k-');
+        set(gca,'fontsize',fs);  title(['Dim: ',int2str(template)]); 
+        if isfield(s,'medwarpevs')
+            cols = lines(length(s.medwarpevs));
+            for wp = 1:length(s.medwarpevs)
+                ph = plot([s.medwarpevs(wp) s.medwarpevs(wp)],[get(gca,'ylim')],'k-');
+                set(ph,'color',cols(wp,:));
+            end;
+        end;  
+        if template == plotmax
+            cbar;
+        end;
+    end;
+    ph = textsc([savedat,'; ERSP'],'title'); set(ph,'fontsize',fs);
+    set(gcf,'PaperOrientation','landscape');set(gcf,'PaperPosition',[0.25 0.25 10.5 8]); 
+    if ~isempty(savename)
+        makesave = [pathname,savename];    eval(makesave);   
+    end;
+
+    

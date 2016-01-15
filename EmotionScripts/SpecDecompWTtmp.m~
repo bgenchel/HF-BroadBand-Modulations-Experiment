@@ -1,0 +1,198 @@
+% takes a 3D matrix of EEG IC activations. Calculates power in each epoch (2nd dim) and 
+% performs spectral decomposition in the TW fashion
+%
+%
+% INPUTS:
+% alldat -- [3D matrix] dimensions: ICs x time x epochs 
+% datpath -- [string] data file path where 'savedat.fdt' will be saved
+% savedat -- [string] name to save data float file as
+% frqlim -- [minfrq maxfrq] minimum and maximum frequencies to include in spectral decomposition
+% freqscale -- ['linear','quad' or 'log'] 'quad' makes quadratically spaced freq bins
+% tmpoints -- [vector of latencies in ms] to center spectral window on (around which a 1s 
+%             window must fit within epoch limits). Data will be hanning windowed
+%             to emphasize data at specified time point.
+% times -- [vector of latencies] of length equal to size(alldat,2) giving time stamp in
+%          ms of each sample.
+% pcfac -- [number] number of points per weight to have in final ICA (will PCA down accordingly)
+%          If 'pcfac' is > 10, then this variable specifies the number of PCA dimensions
+%          to keep (does not scale by the number of data points).
+% srate -- [integer] sampling rate of the input data matrix 'alldat'
+% datsetvec -- [vector] of indices with the length = size(alldat,3) saying for each
+%              epoch which dataset (trial type) the epoch belongs to. Will be added
+%              to the 'keeptrack' output variable.
+% complist -- [vector] of component indices corresponding to the rows of alldat
+% pwrdecomp -- [0 or [cycle1 cycle2 winsize]] if 0, will use pwelch to calculate standard
+%              FFT. If number of cycles and winsize specified, then will perform wavelet
+%              decomp. If cycle2 is larger than cycle1, then a linear scaling of the 
+%              number of wavelets will be created between the lowest and highest freqs
+%              requested. Default is 0. for wavelets, recommend 6 for low frqs,20-40 for high
+
+function [numrows,numframes,freqs, pcs,rowmeans] = SpecDecompWTtmp(alldat,datpath,savedat,frqlim,nfreqs,freqscale,tmpoints,times,pcfac,srate,datsetvec,complist,pwrdecomp);
+    
+    
+    
+    if isempty(nfreqs)
+        nfreqs = frqlim(end)-frqlim(1);
+    end;
+    if ~exist('datsetvec')
+        datsetvec = ones(1,size(alldat,3)); % assume all one dataset if missing
+    elseif isempty(datsetvec)
+        datsetvec = ones(1,size(alldat,3));
+    end;
+    if length(pwrdecomp) > 2 %if wavelet, specify freq spacing in advance
+        if strcmp(freqscale, 'quad') % make quadratic freq spacing
+            freqs = linspace(sqrt(frqlim(1)), sqrt(frqlim(end)), nfreqs);
+            freqs = freqs.^2;
+        elseif strcmp(freqscale, 'log') % make quadratic freq spacing
+            freqs = linspace(log(frqlim(1)), log(frqlim(end)), nfreqs);
+            freqs = exp(freqs);
+        else % if linear-spacing
+            freqs = linspace(frqlim(1), frqlim(2),nfreqs);
+        end;
+        cycles1 = pwrdecomp(1);
+        cycles2 = pwrdecomp(2);
+        winsize = pwrdecomp(3);
+        hwin = hanning(winsize)';
+        wavelets = computepsifamilyQodd(freqs,1/srate,cycles1,cycles2,winsize); % 
+    else % FFT
+        winsize = srate;
+    end;             
+    keeptrack = zeros(length(tmpoints)*size(alldat,3),3);pl = 1;
+    bigmat = zeros(length(tmpoints)*size(alldat,3),0);
+    pl = 1;
+    for ic = 1:size(alldat,1)
+      fprintf('\nCalculating power for each %s sec epoch in all epochs/windows for IC %s of %s\n',num2str(winsize/srate),int2str(ic),int2str(size(alldat,1)));
+      pwr = []; ds=1;% reinitialize pwr
+      subwin = [];
+      for epoch = 1:size(alldat,3)
+        if ic == 1% same for all ics
+          if epoch == 1
+            dstrials(ds) = 1; ds = ds+1;
+          elseif datsetvec(epoch) > datsetvec(epoch-1)
+            dstrials(ds) = pl;ds = ds+1;
+          end;
+        end;
+        if epoch == 1
+          relepoch = 1;
+        elseif  datsetvec(epoch) ~= datsetvec(epoch-1)
+          relepoch = 1;
+        else
+          relepoch = relepoch + 1;
+        end;
+        for win = 1:length(tmpoints)
+          x=times - tmpoints(win);
+          [y taketm] = min(abs(x)); % find closest time point
+          if ic == 1% same for all ics
+            keeptrack(pl,:) = [datsetvec(epoch),relepoch,tmpoints(win)]; pl = pl+1;
+          end;
+          subwin = [subwin;alldat(ic,taketm - (winsize-1)/2:taketm + (winsize-1)/2,epoch)];
+        end; % end to win loop
+      end; % end to epoch loop
+    end; % end to ic loop
+    % remove noisy epochs
+    for win = 
+     [newdat,rmepochs] = Rej_Mat3D(subwin,5,5,2000);
+
+    
+    % go back through wins and do power decomp    
+    for ic = 1:size(
+    if pwrdecomp == 0 % only if FFT resample to different freq spacing:   
+      fprintf('\nCalculating pwr for each %s second epoch...\n',num2str(round(size(subwin,2)/srate)));
+      hwin = hanning(size(subwin,2))';
+      fprintf('\nUsing hanning windowed data...\n');
+      pwr = zeros(size(subwin,1),length(freqs));
+      for win = 1:size(subwin,1)
+        [pwr(win,:) frqs] = pwelch(double(subwin(win,:).*hwin),size(subwin,2),size(subwin,2)-1,freqs,srate); 
+        pwr(win,:) = 10*log10(pwr(win,:));% need to convert to log for 'modulator' interpretation
+      end;
+    elseif length(pwrdecomp) > 2 % use wavelet decomp
+        pwr1 = wavelets * (subwin.*repmat(hwin,[size(subwin,1) 1]))'; 
+        pwr1 = pwr1.*conj(pwr1); % pwr1 is now a frqs-length vector
+        pwr1 = 10*log10(pwr1);% convert to log for 'modulator' interpretation
+        pwr = [pwr; pwr1'];            
+    end;
+      
+      % remove mean power spectrum of each ic:
+      meanpwr(ic,:) = mean(pwr,1);
+      pwr = pwr - repmat(mean(pwr,1),[size(pwr,1) 1]); % take out the mean power
+      floatwrite(pwr,[datpath,'tempIC',int2str(ic),'.fdt']); % temporary save for memory
+        clear pwr
+        
+        nrows = size(alldat,3)*length(tmpoints);
+        numframes = size(alldat,1)*length(freqs);
+        nics = size(alldat,1);
+    clear alldat
+    
+    concall = []; % concatenate all IC spectra in Linux
+    for ic = 1:nics
+        concall = [concall [datpath,'tempIC',int2str(ic),'.fdt ']];
+    end;
+    concatlin = ['cat ',concall,' > ',datpath,savedat,'DAT.fdt'];        
+    [status, result] = system(concatlin);  % concatenate float files
+    [status, result] = system(['\rm ',datpath,'tempIC*.fdt']);  % get rid of temp files
+    bigmat = floatread([datpath,savedat,'DAT.fdt'],[nrows numframes],[],0);   
+    
+    % subtract mean spectrum:----------------------------
+    fprintf('\nRemoving mean of each row (across ICs) ...\n');
+    rowmeans =  mean(bigmat,2);  
+    bigmat = bigmat - repmat(rowmeans,[1 size(bigmat,2)]);
+
+    fprintf('\nSaving spectral data as %sDAT.fdt\n',savedat);%%%%%%%%%%%%%%%%%%%%%%
+    floatwrite(bigmat, [datpath,savedat,'DAT.fdt']);% resave with means removed
+    
+    if pcfac > 10 % pcfac specifies number of pcs
+        pcs = pcfac;
+    else % pcs determined by number of columns and pcfac        
+        pcs =  round(sqrt(size(bigmat,2)/pcfac)); % determine number of PCA components
+        if pcs >= size(bigmat,1)
+            pcfac = pcfac*2;
+            pcs =  round(sqrt(size(bigmat,2)/pcfac));
+        end;
+    end;
+    
+    % eigvec is the winv matrix
+    %[eigvec,sv,pc] = pcsquash(bigmat,pcs); % doesn't work for big matrices
+    [U,S,eigvec] = svds(bigmat',pcs);% if you scale acts, you can't scale the 'eigvec'
+    pc = (U*S)'; % scale 'activations' for appropriate weighting in decomp
+    clear U S bigmat
+    eigfile = [savedat,'EIGVEC.fdt'];% save in .mat
+    floatwrite(eigvec, [datpath,eigfile]);
+    clear eigvec
+    fprintf('\n%s original dimensions\n',int2str(nrows));
+    fprintf('\nSaving %s dimensions of PCA''d data for ICA as %s.fdt\n',int2str(pcs),savedat);
+    floatwrite(pc, [datpath,savedat,'.fdt']);
+
+    numrows = pcs;
+    numframes = size(pc,2);
+    
+    
+    % generate an ICA script 
+    ICA_SCRIPT = [datpath,savedat,'.sc'];
+    fid = fopen( ICA_SCRIPT, 'w');
+    fprintf(fid, 'DataFile %s\n', [datpath,savedat,'.fdt']);
+    fprintf(fid, 'chans %d\n', pcs);
+    fprintf(fid, 'frames %d\n',numframes);
+    fprintf(fid, 'WeightsOutFile %s\n', [datpath,savedat,'.wts']);
+    fprintf(fid, 'SphereFile %s\n', [datpath,savedat,'.sph']);  
+    fprintf(fid, 'sphering on\n');
+    fprintf(fid, 'bias on\n');
+    fprintf(fid, 'extended 1\n');
+    fprintf(fid, 'lrate 1.0e-4\n');
+    fprintf(fid, 'blocksize 0\n');
+    fprintf(fid, 'stop 1e-07\n');
+    fprintf(fid, 'maxsteps 2000\n');
+    fprintf(fid, 'posact on\n');
+    fprintf(fid, 'annealstep 0.98\n');
+    fprintf(fid, 'annealdeg 60\n');
+    fprintf(fid, 'momentum 0\n');
+    fprintf(fid, 'verbose on\n');
+    fclose(fid);
+    % run the ICA program
+    run_ica_str = [ '/data/common/matlab/ica_linux2.4 < ', ICA_SCRIPT ];
+    %run_ica_str = ['/home/jason/binica/ica_linux < ', ICA_SCRIPT]; % Jason's binica
+    fprintf('\nRunning ICA in Linux, may take a long time...\n');
+    [status, result] = system(run_ica_str);
+    %%%%%
+    str = ['save ',datpath,savedat,'.mat complist numrows numframes dstrials tmpoints freqs pcs meanpwr rowmeans keeptrack srate freqscale eigfile'];eval(str);    
+    
+    fprintf('\ndone.\n');

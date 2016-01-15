@@ -1,0 +1,464 @@
+% plots context vectors sorted by weight on a TW context decomp. Shows 'trial types' clearly
+%
+% [outimages] = PlotClustContextSort(stem,fullpaths,icidx,clabels,delqs,imgtype,imgval,alpha,ttl,savestring)
+%
+%
+% stem -- context file stem (minus IC which will be added)
+% fullpaths -- full data directory paths
+% idxname -- file name, that is the same for all subjects in their respective data directories,
+%            of the context matrix. File must contain an 'addmat' or an 'idxmat' variable.
+% icidx -- matrix of (nmembers x [subj,IC,IM])
+% clabels -- [cell array of strings] label names for each context question.
+% delqs -- [numbers] indices of context questions to delete from the saved
+%          context matrix. [] if no questions to delete.
+% imgtype -- [string] 'oldview'(hatch marks) or 'imgview'(color-coded moving
+%             average) or 'wtmodes'(color-coded moving average of HISTOGRAM)
+% imgval -- ['percent' or 'raw'] percent will plot 'imgview' or 'wtmodes' as
+%           percents of randomly weighted context values by bootstrap method.
+% alpha -- [decimal] p value desired for masking of 'imgview' or 'wtmodes' in
+%          'percent' imgval mode.
+% ttl -- [string] figure title
+% savestring -- [string] will save the resulting figures using the path and name specified.
+%               Example: savestring = ['/data/common4/RewTwoback/ContextResults/SortCxtCls',int2str(cls)];
+
+function [outimages,eachmemdiff,meddiffs] = PlotClustContextSort(stem,fullpaths,idxname,icidx,clabels,delqs,imgtype,imgval,alpha,ttl,savestring)
+
+truecolor = 'off';
+movingavg = 'off'; % for oldview
+if ~exist('alpha')
+    alpha = [];
+end;
+shuffnum = 15; % don't need a lot cuz it pools trials as well
+outimages = []; % initialize output
+
+cols =  lines(length(clabels));
+
+fprintf('\nLoading cluster member information...');
+lastnx = 0;
+addmats = []; idxtempls = []; allwts = [];indivvals = [];
+keepsort = zeros(length(clabels),500); % for avging sorted contexts
+for mem = 1:size(icidx,1)
+    nx = icidx(mem,1);
+    ic = icidx(mem,2);
+    plotfacs = icidx(mem,3);
+    if plotfacs < 0
+        flip = -1; plotfacs = abs(plotfacs);
+    else
+        flip = 1;
+    end;
+    str = ['load ',fullpaths{nx},idxname];eval(str);
+    if ~exist('addmat') % until this is all normalized across expts
+        addmat = idxmat;
+    end;
+    s = load([fullpaths{nx},stem,int2str(ic),'.mat']);
+    addmat(delqs,:) = [];% delete questions
+    if isfield(s,'alldeleps')
+        addmat(:,s.alldeleps) = [];
+    elseif isfield(s,'alldels')
+        addmat(:,s.alldels) = [];
+    end;
+    sph=floatread([fullpaths{nx},stem,int2str(ic),'.sph'],[s.numrows s.numrows],[],0);
+    wts=floatread([fullpaths{nx},stem,int2str(ic),'.wts'],[s.numrows s.numrows],[],0);
+    icamat=floatread([fullpaths{nx},stem,int2str(ic),'.fdt'],[s.numrows s.numframes],[],0);
+    ws = wts*sph;winv = pinv(ws);    acts = ws*icamat;
+    if ~isempty(s.cxteigfile)
+        idxeig = floatread([fullpaths{nx},s.cxteigfile],[length(s.cxtmean) s.pcctx],[],0);
+        idxtempl = idxeig*winv(s.pcmat+1:end,:);% just makes context templates
+    else
+        idxtempl = winv(s.pcmat+1:end,:);% just makes context templates
+    end;
+    addmats = [addmats, addmat];
+    idxtempls = [idxtempls, idxtempl(:,plotfacs)];
+    allwts = [allwts, flip*acts(plotfacs,:)/max(abs(acts(plotfacs,:)))];% invert when context is flipped
+    indivwts{mem} = flip*acts(plotfacs,:)/max(abs(acts(plotfacs,:))); %save all wts
+    wtlengths(1,mem) = size(acts,2); % save number of trials to see if same subj
+    % sort individual weights and add to rest of cluster (avg later)
+    [vals idx] = sort(indivwts{mem}); % sort all wts together
+    indivvals(mem,:) = vals(round([1:length(vals)/500:length(vals)]));
+    indivsort = addmat(:,idx);
+    indivsort = indivsort(:,round([1:size(indivsort,2)/500:size(indivsort,2)]));% percentiles
+    keepsort = keepsort + indivsort; % add together for avg later
+    clear addmat
+end;
+keepsort = keepsort/mem; % take average
+indivvals = mean(indivvals,1);
+% sort the mean individual weights:-----------------
+[indwtvals idx] = sort(indivvals);
+%--------------------------------
+% see if all same subj:-----------------
+meddiffs = [];eachmemdiff = [];
+if length(unique(wtlengths)) == 1 % all same subj
+    for m1 = 1:length(indivwts)-1
+        for m2 = m1+1:length(indivwts)
+            [sort1 idx1] = sort(indivwts{m1});
+            [sort2 idx2] = sort(indivwts{m2});
+            for t = 1:length(idx1)% how far are trials from each other?
+                s2idx = find(idx2 == idx1(t));
+                diffvals(m1,m2,t) = t - s2idx;
+                diffvals(m2,m1,t) = t - s2idx;
+            end;
+        end;
+    end
+    meddiffs = [];eachmemdiff = [];
+    for m1 = 1:length(indivwts)
+        for m2 = m1+1:length(indivwts)
+            eachmemdiff(m1,m2) = median(abs(diffvals(m1,m2,:)));
+            eachmemdiff(m2,m1) = median(abs(diffvals(m1,m2,:)));
+            meddiffs = [meddiffs, median(abs(diffvals(m1,m2,:)))];
+        end;
+    end;
+end;
+%--------------------------------
+if size(addmats,2) ~= size(allwts,2)
+    fprintf('\nWeights and context answers do not agree, aborting plot function\n')
+    return;
+end;
+
+figure; pl = 1; pg = 1;
+col = 1;
+if strcmp(imgtype,'oldview')
+    %row = 10;
+    row = length(clabels) + 3;
+else
+    row = size(addmats,1)+4;
+end;
+
+% first plot the context vector:
+sbplot(row,col,pl);pl = pl+1;
+ph = plot([1:size(idxtempls,1)],mean(idxtempls,2),'k-','linewidth',1);
+set(gca,'xlim',[0 size(idxtempls,1)+1]); hold on;
+ph = plot([get(gca,'xlim')],[0 0],'r-');
+for q = 1:size(idxtempls,1)
+    ph = plot(q,mean(idxtempls(q,:)),'b.','markersize',15);
+    set(ph,'color',cols(q,:));
+end;
+%clim = max(abs(mean(idxtempls,2)));
+set(gca,'ylim',[min(mean(idxtempls,2))-.01 max(mean(idxtempls,2))+.01]);
+for q = 1:size(idxtempls,1)
+    ph = text(q,mean(idxtempls(q,:),2)+mean(idxtempls(q,:),2)*.01,clabels{q});
+    set(ph,'color',cols(q,:));
+    set(ph,'rotation',90); set(ph,'fontsize',10);
+end;  set(gca,'xticklabel',[]); axis('off')
+%ph = plot([1:size(idxtempls,1)],mean(idxtempls,2),'k-','linewidth',1);
+
+if strcmp(imgtype,'oldview')%------------------------------------------
+    if length(allwts) > 8000000  %40000 (changed to skip this step while trying diff plotting)
+        %subsmpl = [1:round(length(allwts)/20000):length(allwts)];
+        subsmpl = [1:round(length(allwts)/80000):length(allwts)];
+        allwts = allwts(subsmpl);
+        addmats=addmats(:,subsmpl);
+    end;
+end;
+
+% sort the weights:-----------------
+[vals idx] = sort(allwts); % sort all wts together
+sortcon = addmats(:,idx);
+
+fprintf('\nCreating weights and histograms...');
+
+if strcmp(imgtype,'oldview') | strcmp(imgtype,'imgview')
+    % variables:-------------------
+    imgxwidth = round(size(sortcon,2)/4000);
+    imgxadv = round(size(sortcon,2)/7500);
+    gausswin = 1000; gaussstd = .5;
+    % superimpose all sorted wts -------------------------------------
+    sbplot(row,col,[pl pl+1]);pl = pl+2; tmpcol = lines(length(indivwts));
+    for mem = 1:length(indivwts)
+        ph = plot([100/length(indivwts{mem}):100/length(indivwts{mem}):100],sort(indivwts{mem}),'k-');set(ph,'color',tmpcol(mem,:));hold on;
+    end;
+    % super-super-impose the sorted weights-----------------
+    [histout,imgoutx] = movav(allwts(idx),[],imgxwidth,imgxadv,[],[]);
+    %plot(acts(dim,idx),'linewidth',2);  hold on;
+    %set(gca,'xlim',[1 size(acts,2)]);
+    plot([100/length(imgoutx):100/length(imgoutx):100],histout,'k-','linewidth',3);  hold on;
+    ph = plot([get(gca,'xlim')],[0 0],'k-'); set(ph,'color',[.3 .3 .3]);
+    %set(gca,'ylim',[min(histout) max(histout)]);
+    set(gca,'xticklabel',[]);set(gca,'ticklength',[0 0]);
+elseif strcmp(imgtype,'wtmodes')
+    % variables:-------------------
+    winsize = .002; % .015? or .002?
+    xadv = .004;
+    mnval = min(vals); mxval = max(vals);
+    gausswin = 1000; gaussstd = .5;
+    % Plot the weights histogram-----------------
+    [hh bins] = hist(vals,size(allwts,2));
+    [histout,imgoutx] = movav(hh,bins,winsize,xadv,mnval,mxval,gauss(gausswin,gaussstd));
+    sbplot(row,col,[pl pl+1]);pl = pl+2;
+    ph = bar(imgoutx,histout); hold on;
+    %ph = plot(imgoutx,histout,'linewidth',2);hold on;
+    ph = plot([0 0],[get(gca,'ylim')],'r-');set(gca,'ticklength',[0 0]);
+    set(gca,'xlim',[min(imgoutx) mxval]);
+end;
+
+fprintf('\nPlotting context question display...');
+
+tiles = [0:.1:100]; % for percentiles
+
+if strcmp(imgtype,'oldview')%------------------------------------------
+    sortcon = keepsort; % this is the sorted THEN avg'd data
+    imgxwidth = size(sortcon,2)/100;
+    imgxadv = .5;
+    if strcmp(imgval,'percent')
+        [outdata,outx] = movav(sortcon,[],imgxwidth,imgxadv,[],[],[]);
+        clear bootout
+        % collect random limits to plot as percentiles:---------------
+        fprintf('\nCollecting bootstrap limits for percentiles...\n');
+        for b = 1:shuffnum
+            randidx = ceil(rand(1,size(sortcon,2))*size(sortcon,2));% with substitution
+            %randidx = randperm(size(sortcon,2));% without substitution
+            [bootout(:,:,b),bootx] = movav(sortcon(:,randidx),[],imgxwidth,imgxadv,[],[]);
+        end;
+        poolboot = reshape(bootout,[size(bootout,1) size(bootout,2)*size(bootout,3)]);
+        y=prctile(poolboot,tiles,2); %clear poolboot
+        ttl = ['Trial view; Percent of expected random answers; ',ttl];
+    else % plot moving avg w/mean removed
+        if strcmp(truecolor,'on')
+            scon = sortcon;
+        else
+            scon = sortcon - repmat(median(sortcon,2),[1 size(sortcon,2)]);
+        end;
+        [outdata,outx] = movav(scon,[],imgxwidth,imgxadv,[],[],[]);
+        outdata = outdata/max(abs(outdata(:)));
+        ttl = ['Trial view; Smoothed context answers (median removed) ',ttl];
+    end;
+    
+    for qq = 1:size(addmats,1)
+        if pl > row*col % start a new page:
+            textsc(ttl,'title');
+            set(gcf,'PaperOrientation','portrait');  set(gcf,'PaperPosition',[0.25 0.25 8 10.5]);
+            str = ['print ',savestring,'page',int2str(pg),'.eps -depsc -painters -adobe']; eval(str)
+            str = ['print ',savestring,'page',int2str(pg),'.jpg -djpeg']; eval(str)
+            figure; pl = 1; pg = pg+1;
+            % first plot the context vector:
+            sbplot(row,col,pl);pl = pl+1;
+            ph = plot([1:size(idxtempls,1)],mean(idxtempls,2),'k-','linewidth',1);
+            set(gca,'xlim',[0 size(idxtempls,1)+1]); hold on;
+            ph = plot([get(gca,'xlim')],[0 0],'r-');
+            for q = 1:size(idxtempls,1)
+                ph = plot(q,mean(idxtempls(q,:),2),'bo');
+                set(ph,'color',cols(q,:));
+            end;
+            clim = max(abs(mean(idxtempls,2)))+max(abs(mean(idxtempls,2)))*.05;
+            set(gca,'ylim',[-clim clim]);
+            for q = 1:size(idxtempl,1)
+                ph = text(q,-clim+abs(-clim*.05),clabels{q});
+                set(ph,'color',cols(q,:));
+                set(ph,'rotation',90); set(ph,'fontsize',10);
+            end;  set(gca,'xticklabel',[]);
+            ph = plot([1:size(idxtempls,1)],mean(idxtempls,2),'k-','linewidth',1);
+        end;
+        sbplot(row,col,pl);pl = pl+1;
+        if strcmp(imgval,'percent')
+            z=squeeze(y(qq,:));
+            % take difference to find the closest bin (tile)
+            for trls = 1:size(outdata,2)
+                [v id]=min(abs(z-outdata(qq,trls)));
+                percdata(1,trls) = tiles(id); % change into percentiles
+            end
+            [v id] = min(abs(repmat(outdata(qq,:)',[1 size(z,2)]) - repmat(z,[size(outdata,2) 1])),[],2);
+            percdata = tiles(id); % change into percentiles
+            % mask out insig percentiles
+            if ~isempty(alpha)
+                %percdata(q,find(percdata>100*alpha&percdata<100-(100*alpha))) = 50;
+            end;
+            ph = plot(outx,percdata,'-k');hold on;
+            set(ph,'color',[.7 .7 .7]);
+            ph = plot([get(gca,'xlim')],[50 50],'k-');%set(ph,'color',[.3 .3 .3]);
+            ints = linspace(log(.1),log(50),500);
+            ints = exp(ints);
+            highints = 100-ints; highints = highints(end:-1:1);
+            qintervals = [ints,highints];
+            %qintervals = [0:.1:100];
+            avgcols = jet(length(qintervals));
+            for w = 1:size(outdata,2)
+                ph = plot(outx(w),percdata(1,w),'.k','markersize',6);hold on;
+                tmpdat = percdata(1,w);
+                [v wint] = min(abs(qintervals - tmpdat));
+                %wint = find(ismember(qintervals,tmpdat));
+                set(ph,'color',avgcols(wint,:));
+            end;
+            set(gca,'xlim',[outx(1) outx(end)]);
+            %ph = text(-1,50,clabels{qq});
+            ph = text(-(.07*length(outx)),50,clabels{qq});
+            set(ph,'color',cols(qq,:));hold on;
+            axis('off');            
+        elseif strcmp(imgval,'raw')
+            ph = plot(outx,outdata(qq,:),'-k');hold on;
+            set(ph,'color',[.7 .7 .7]);
+            %ph = plot([get(gca,'xlim')],[0 0],'k-');%set(ph,'color',[.3 .3 .3]);
+            ph = plot([get(gca,'xlim')],[mean(outdata(qq,:)) mean(outdata(qq,:))],'k-');
+            %set(ph,'color',[.3 .3 .3]);
+            qintervals = [-10:1:10];
+            avgcols = jet(length(qintervals));
+            for w = 1:size(outdata,2)
+                ph = plot(outx(w),outdata(qq,w),'.k','markersize',6);hold on;
+                tmpdat = outdata(qq,w); tmpdat = round(tmpdat*10);
+                wint = find(ismember(qintervals,tmpdat));
+                set(ph,'color',avgcols(wint,:));
+            end;
+            ph = text(outx(1) - outx(end)*.1,0,clabels{qq});hold on;
+            set(ph,'color',cols(qq,:));
+        end;
+        outimages = outdata;
+        set(gca,'xlim',[outx(1) outx(end)]);
+        axis('off')
+        set(gca,'xticklabel',[]);set(gca,'yticklabel',[]);
+    end;
+    textsc(ttl,'title');
+    if ~isempty(savestring)
+        set(gcf,'PaperOrientation','portrait');  set(gcf,'PaperPosition',[0.25 0.25 8 10.5]);
+        str = ['print ',savestring,'.eps -depsc -painters -adobe']; eval(str)
+        str = ['print ',savestring,'.jpg -djpeg']; eval(str)
+    end;
+elseif strcmp(imgtype,'imgview')%------------------------------------------
+    %[imgout,imgoutx] = movav(sortcon,[],imgxwidth,imgxadv,[],[]);
+    [imgout,imgoutx] = movav(keepsort,[],1,.1,[],[]); % for percentiles of sorted wts
+    sbplot(row,col,[pl row*col]);
+    textcols =  gray(length(clabels)+15);textcols(end-14:end,:) =[];
+    if strcmp(imgval,'percent')
+        clear bootout
+        % collect random limits to plot as percentiles:---------------
+        fprintf('\nCollecting bootstrap limits for percentiles...\n');
+        for b = 1:shuffnum
+            randidx = ceil(rand(1,size(sortcon,2))*size(sortcon,2));
+            [bootout(:,:,b),bootx] = movav(sortcon(:,randidx),[],imgxwidth,imgxadv,[],[]);
+        end;
+        tiles = [0:.1:100]; % how many percentile bins
+        poolboot = reshape(bootout,[size(bootout,1) size(bootout,2)*size(bootout,3)]);% combine trials and bootstrap shuffles (all draw from the same distribution)
+        y=prctile(poolboot,tiles,2);  % creat percentiles
+        clear percimg
+        for q = 1:size(imgout,1)
+            z=squeeze(y(q,:));
+            % if repeated percentiles:----
+            if length(find(z == z(1))) > 1
+                [vv ii] = find(z == z(1));
+                z(ii(2:end)) = 100; % really big
+            end;
+            if length(find(z == z(end))) > 1
+                [vv ii] = find(z == z(end));
+                z(ii(1:end-1)) = 100; % really big
+            end;
+            
+            [v id] = min(abs(repmat(imgout(q,:)',[1 size(z,2)]) - repmat(z,[size(imgout,2) 1])),[],2);
+            percimg(:,q) = tiles(id); % change into percentiles
+        end;
+        percimg = percimg';
+        % mask out insig percentiles
+        if ~isempty(alpha)
+            for q = 1:size(percimg,1)
+                percimg(q,find(percimg(q,:)>100*alpha&percimg(q,:)<100-(100*alpha))) = 50; %mask
+            end;
+        end;
+        outimages = percimg;
+        imagesc(imgoutx,[1:size(imgout,1)],percimg); hold on;
+        ttl = [ttl,'; Trial view; Percents;'];
+    else
+        outimages = imgout;
+        imagesc(imgoutx,[1:size(imgout,1)],imgout); hold on;
+        ttl = [ttl,'; Trial view; Raw data;'];
+    end
+    set(gca,'xlim',[min(imgoutx) max(imgoutx)]);
+    set(gca,'yticklabel',[]);set(gca,'xticklabel',[]);
+    ylabel('Context Questions');
+    %xlabel('Sorted Trials');
+    xlabel('Sorted Trials Percentiles');
+    for q = 1:size(idxtempl,1)
+        ph = text(imgoutx(3),q,clabels{q});set(ph,'color','w');set(ph,'fontsize',10);
+        ph = text(imgoutx(round(length(imgoutx)/2)),q,clabels{q});set(ph,'color','w');set(ph,'fontsize',10);
+        ph = text(imgoutx(end-round(length(imgoutx)/100)),q,clabels{q});set(ph,'color','w');set(ph,'fontsize',10);
+    end;
+    textsc(ttl,'title');
+    if ~isempty(savestring)
+        set(gcf,'PaperOrientation','portrait');  set(gcf,'PaperPosition',[0.25 0.25 8 10.5]);
+        str = ['print ',savestring,'.eps -depsc -painters -adobe']; eval(str)
+        str = ['print ',savestring,'.jpg -djpeg']; eval(str)
+    end;
+elseif strcmp(imgtype,'wtmodes')%------------------------------------------
+    %[imgout,imgoutx] = movav(sortcon,vals,winsize,xadv,mnval,mxval,gauss(gausswin,gaussstd));
+    [imgout,imgoutx] = movav(sortcon,vals,winsize,xadv,mnval,mxval);
+    [imgout,imgoutx] = movav(keepsort,indwtvals,winsize,xadv,mnval,mxval);
+    textcols =  gray(length(clabels)+15);textcols(end-14:end,:) =[];
+    sbplot(row,col,[pl row*col]);
+    if strcmp(imgval,'percent')
+        clear bootout
+        % collect random limits to plot as percentiles:---------------
+        fprintf('\nCollecting bootstrap limits for percentiles...\n');
+        for b = 1:shuffnum
+            randidx = ceil(rand(1,size(sortcon,2))*size(sortcon,2));
+            %[bootout(:,:,b),bootx] = movav(sortcon(:,randidx),vals,winsize,xadv,mnval,mxval,gauss(gausswin,gaussstd));
+            [bootout(:,:,b),bootx] = movav(sortcon(:,randidx),vals,winsize,xadv,mnval,mxval);
+        end;
+        tiles = [0:.1:100];
+        poolboot = reshape(bootout,[size(bootout,1) size(bootout,2)*size(bootout,3)]);
+        y=prctile(poolboot,tiles,2);
+        clear percimg
+        for q = 1:size(imgout,1)
+            z=squeeze(y(q,:));
+            % if repeated percentiles:----
+            if length(find(z == z(1))) > 1
+                [vv ii] = find(z == z(1));
+                z(ii(2:end)) = 100; % really big
+            end;
+            if length(find(z == z(end))) > 1
+                [vv ii] = find(z == z(end));
+                z(ii(1:end-1)) = 100; % really big
+            end;
+            
+            [v id] = min(abs(repmat(imgout(q,:)',[1 size(z,2)]) - repmat(z,[size(imgout,2) 1])),[],2);
+            %z=squeeze(y(q,:,:));
+            %[v id] = min(abs(repmat(imgout(q,:)',[1 size(z,2)]) - z),[],2);
+            
+            percimg(:,q) = tiles(id); % change into percentiles
+        end;
+        percimg = percimg';
+        ttl = [ttl,'; Histogram view; Percents; '];
+        % mask out insignificant percentiles
+        if ~isempty(alpha)
+            for q = 1:size(percimg,1)
+                percimg(q,find(percimg(q,:)>100*alpha&percimg(q,:)<100-(100*alpha))) = 50; %mask
+            end;
+            ttl = [ttl,'; Alpha: ',num2str(alpha)];
+        end;
+        imagesc(imgoutx,[1:size(imgout,1)],percimg); hold on;
+        outimages = percimg;
+    else
+        outimages = imgout;
+        %imagesc(imgoutx,[1:size(imgout,1)],imgout); hold on;
+        % $$$             for qq = 1:size(imgout,1)
+        % $$$                 sbplot(row,col,pl);
+        % $$$                 ph = plot([min(indwtvals) max(indwtvals)],[0 0],'k-');set(ph,'color',[.25 .25 .25]);
+        % $$$                 set(ph,'color',[.7 .7 .7]); hold on;
+        % $$$                 ph = plot(indwtvals,keepsort(qq,:),'k-');
+        % $$$                 set(ph,'color',cols(qq,:));pl = pl+1;
+        % $$$                 set(gca,'yticklabel',[]); axis('off')
+        % $$$             end;
+        figure; pl = 1;
+        randidx = [1:50:size(sortcon,2)];
+        for qq = 1:size(sortcon,1)
+            sbplot(row,col,pl);
+            ph = plot([min(vals(randidx)) max(vals(randidx))],[0 0],'k-');set(ph,'color',[.25 .25 .25]);
+            set(ph,'color',[.7 .7 .7]); hold on;
+            ph = plot(vals(randidx),sortcon(qq,randidx),'k-');
+            set(ph,'color',cols(qq,:));pl = pl+1;
+            set(gca,'yticklabel',[]); axis('off')
+        end;
+        
+        ttl = [ttl,'; Histogram view; Raw data; '];
+    end;
+    set(gca,'yticklabel',[]);
+    set(gca,'xlim',[min(imgoutx) mxval]);
+    xlabel('Weights');
+    ylabel('Context Questions');
+    for q = 1:size(idxtempl,1)
+        ph = text(imgoutx(3),q,clabels{q});set(ph,'color','w');set(ph,'fontsize',10);
+        ph = text(.7,q,clabels{q});set(ph,'color','w');set(ph,'fontsize',10);
+        ph = text(0,q,clabels{q}); set(ph,'color','w');set(ph,'fontsize',10);
+    end;
+    textsc(ttl,'title');
+    if ~isempty(savestring)
+        set(gcf,'PaperOrientation','portrait');  set(gcf,'PaperPosition',[0.25 0.25 8 10.5]);
+        str = ['print ',savestring,'.eps -depsc -painters -adobe']; eval(str)
+        str = ['print ',savestring,'.jpg -djpeg']; eval(str)
+    end;
+end;
+

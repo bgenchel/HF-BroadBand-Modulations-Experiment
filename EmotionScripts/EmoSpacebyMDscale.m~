@@ -1,0 +1,182 @@
+% takes selected 'collmeans' from CorrEmoMeans() and uses multi-dimensional scaling to find emo
+% space within and across subjects
+%
+%
+% emomeans -- [cell array] {subj}(IM,emo)
+% corrcut -- [number] correlation coefficient cut-off to collect emomeans correlated to any other emomean.
+% keeptrack -- [matrix] number of IMs X 2 (subj id, IM id)
+% numdims -- [integer] number of dimensions to calculate for within subj solution
+% mvon -- [1|0] if 1, will make a movie of MD-scaled space from various angles
+% ttl_in -- [string] to title the still picture of 3D MD scaling figure
+
+function [fullwts] = EmoSpacebyMDscale(emomeans,numdims,subjlist,corrcut,mvon,ttl_in)
+
+
+  indiv = 0;
+  cols = jet(15);cols(10,:) = [.9 .9 0];
+  emo2 = {'  anger','  frustration','  jealousy','  fear' ,'  disgust','  grief','  sad','  compassion','  love','  relief','  content','  awe','  happy','  joy','  excited'};
+  
+  clear corr indx indy
+  for nxx1 = 1:length(subjlist) - 1
+      nx1 = subjlist(nxx1);
+      for nxx2 = nxx1 + 1:length(subjlist)
+          nx2 = subjlist(nxx2);
+          if length(size(emomeans{nx1})) > 2
+              for d = 1:size(emomeans{nx1},3)
+                  [corr(nx1,nx2,:,d),indx(nx1,nx2,:,d),indy(nx1,nx2,:,d),corrs] = matcorr(emomeans{nx1}(:,:,d),emomeans{nx2}(:,:,d));
+              end;
+          else
+              [corr(nx1,nx2,:),indx(nx1,nx2,:),indy(nx1,nx2,:),corrs] = matcorr(emomeans{nx1},emomeans{nx2});
+          end;
+      end;
+  end;
+  
+  % collect highly correlated dims from emomeans **************************************
+  dimidx = cell(1,length(emomeans));
+  for nx1 = 1:length(subjlist)
+      nx = subjlist(nx1);
+      keepcuts1 = zeros(1,0);
+      for nx2 = nx1+1:length(subjlist)
+          nxx= subjlist(nx2);
+          keepcuts2 = zeros(1,0);
+          if length(size(corr)) > 3
+              kc1 = zeros(1,0);
+              kc2 = zeros(1,0);
+              addons = zeros(1,0);
+              for d = 1:size(emomeans{nx},3)
+                  addons(1,end+1:end+length(find(abs(corr(nx,nxx,:,d)) > corrcut)))= find(abs(corr(nx,nxx,:,d)) > corrcut)';
+                  kc1(1,end+1:end+length(find(abs(corr(nx,nxx,:,d)) > corrcut))) = squeeze(indx(nx,nxx,find(abs(corr(nx,nxx,:,d)) > corrcut),d))';
+                  kc2(1,end+1:end+length(find(abs(corr(nx,nxx,:,d)) > corrcut))) = squeeze(indy(nx,nxx,find(abs(corr(nx,nxx,:,d)) > corrcut),d))';
+              end;     
+              [addons,I,J] = unique(addons);
+              kc1 = kc1(I);
+              kc2 = kc2(I);
+              keepcuts1(1,end+1:end+length(kc1)) = kc1;
+              keepcuts2(1,end+1:end+length(kc2)) = kc2;
+          else
+              
+              if ~isempty(find(abs(corr(nx,nxx,:)) > corrcut))
+                  addons = find(abs(corr(nx,nxx,:)) > corrcut);
+                  keepcuts1(1,end+1:end+length(addons)) = squeeze(indx(nx,nxx,find(abs(corr(nx,nxx,:)) > corrcut)));
+                  keepcuts2(1,end+1:end+length(addons)) = squeeze(indy(nx,nxx,find(abs(corr(nx,nxx,:)) > corrcut)));
+              end;
+          end;
+          
+          dimidx{nxx}(1,end+1:end+length(keepcuts2)) = keepcuts2;
+      end;
+      dimidx{nx}(1,end+1:end+length(keepcuts1)) = keepcuts1;
+  end;
+  
+  minim = 1;% number of IMs that a given IM must be correlated above threshold to
+  collmeans = []; keeptrack = zeros(0,2);
+  for nx = 1:length(dimidx)
+    if ~isempty(dimidx{nx})
+      %dimidx{nx} = unique(dimidx{nx});
+      for dm = 1:length(unique(dimidx{nx}))
+        if length(find(dimidx{nx} == dm)) > minim
+          if length(size(emomeans{nx})) > 2
+              tmpmeans =  squeeze(emomeans{nx}(dm,:,:)); %  emos x deciles 
+              collmeans = [collmeans, tmpmeans]; % emos x IMs*ndeciles
+              keeptrack(end+1:end+size(tmpmeans,2),:) = [repmat(nx,[size(tmpmeans,2) 1]), repmat(dm,[size(tmpmeans,2) 1])];
+          else              
+              collmeans = [collmeans, emomeans{nx}(dm,:)'];% emos x IMs          
+              keeptrack(end+1,:) = [nx, dm];
+          end;
+        end;
+      end;
+    end;
+  end;            
+  
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %  Calculate MD scaling   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  
+  fdims = numdims; % final number of dims to plot
+  dd = pdist(collmeans, 'correlation') ;    
+  [fullmd,fullwts] = cmdscale(dd);
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  
+  figure; 
+  % plot still figure:
+  if fdims < 3
+    % for one point per emotion (mean)
+    for e = 1:size(fullmd,1)
+      ph=plot(fullmd(e,1),fullmd(e,2),'.');hold on;
+      set(ph,'markersize',20);set(ph,'color',cols(e,:));
+      ph = text(fullmd(e,1),fullmd(e,2),emo2{e});
+      set(ph,'color',cols(e,:)); 
+    end;
+    title(ttl_in); 
+    xlabel(['Dim 1']);ylabel(['Dim 2']);
+  else
+    %%%%%%%%%%%
+    %%  Plot 3 Dims vs each other:
+    %figure; % just 3  dims vs each other
+    c1 = 1; c2 = 2; c3 = 3;
+    for e = 1:size(fullmd,1)
+      ph=plot3(fullmd(e,c1),fullmd(e,c2),fullmd(e,c3),'.');hold on;
+      set(ph,'markersize',25);                set(ph,'color',cols(e,:));
+      ph = text(fullmd(e,c1),fullmd(e,c2),fullmd(e,c3),emo2{e});
+      set(ph,'color',cols(e,:)); set(ph,'fontsize',14); 
+    end;
+    zl = get(gca,'zlim');
+    for e = 1:size(fullmd,1)
+      pl =plot3([fullmd(e,c1) fullmd(e,c1)],[fullmd(e,c2) fullmd(e,c2)],[zl(1)  fullmd(e,c3)]);
+      set(pl,'color',cols(e,:)); set(pl,'linewidth',2)             
+    end;
+    set(gca,'xgrid','on');  set(gca,'ygrid','on');set(gca,'zgrid','on');
+    xlabel(['Dim ',int2str(c1)]);ylabel(['Dim ',int2str(c2)]);zlabel(['Dim ',int2str(c3)]);
+    title(ttl_in); 
+  end;
+
+
+   if mvon == 1
+    ad = 1; figure; ads = [0:2:360]; mvs = [[0:.017:3.1],[3.1:-.017:0]]; clear M
+    mov = avifile('EmoSpace.avi','fps',1,'quality',100)
+    set(gcf,'color','w');
+    for mf = 1:180
+        if fdims < 3
+            figure; 
+            % for one point per emotion (mean)
+            for e = 1:size(fullmd,1)
+                ph=plot(fullmd(e,1),fullmd(e,2),'.');hold on;
+                set(ph,'markersize',20);set(ph,'color',cols(e,:));
+                ph = text(fullmd(e,1),fullmd(e,2),emo2{e});
+                set(ph,'color',cols(e,:)); 
+            end;
+            title(['All Sbj Emo Space (numdims: ',int2str(fdims),')']); 
+            xlabel(['Dim 1']);ylabel(['Dim 2']);
+        else
+            %%%%%%%%%%%
+            %%  Plot 3 Dims vs each other:
+            %figure; % just 3  dims vs each other
+            c1 = 1; c2 = 2; c3 = 3;
+            for e = 1:size(fullmd,1)
+                ph=plot3(fullmd(e,c1),fullmd(e,c2),fullmd(e,c3),'.');hold on;
+                set(ph,'markersize',25);                set(ph,'color',cols(e,:));
+                ph = text(fullmd(e,c1),fullmd(e,c2),fullmd(e,c3),emo2{e});
+                set(ph,'color',cols(e,:)); set(ph,'fontsize',14); 
+            end;
+            zl = get(gca,'zlim');
+            for e = 1:size(fullmd,1)
+                pl =plot3([fullmd(e,c1) fullmd(e,c1)],[fullmd(e,c2) fullmd(e,c2)],[zl(1)  fullmd(e,c3)]);
+                set(pl,'color',cols(e,:)); set(pl,'linewidth',2)             
+            end;
+            set(gca,'xgrid','on');  set(gca,'ygrid','on');set(gca,'zgrid','on');
+            xlabel(['Dim ',int2str(c1)]);ylabel(['Dim ',int2str(c2)]);zlabel(['Dim ',int2str(c3)]);
+            %title(['All Sbj Emo Space (numdims: ',int2str(fdims),')']); 
+            set(gca,'xlim',[-.6 .8]); set(gca,'ylim',[-.6 .6]);  set(gca,'zlim',[-.6 .6]);
+            set(gca,'xtick',[-.6:.2:.8]);
+            set(gca,'ytick',[-.6:.2:.8]);
+            set(gca,'ztick',[-.6:.2:.8]);
+            view(20+ads(mf),32+sin(mvs(mf))*3); 
+            M2(mf) = getframe(gcf);
+            %mov = addframe(mov,M);
+        end;
+    end;
+    %mov = close(mov);
+    movie(M2)
+    movie2avi(M2,'/data/common4/emotion/EmoSpaceFast.avi','fps',8,'quality',100)
+    save /data/common4/emotion/EmoSpaceMov.mat M
+    end;
+%%% 

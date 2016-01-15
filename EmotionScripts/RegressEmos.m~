@@ -1,0 +1,71 @@
+% takes subjective emotion ratings in valence/arousal and regresses
+% with median weights of each IM, each subject
+%
+%
+%
+%
+%
+%
+%
+
+function [subjvalact,valcorr,actcorr,subjidxval,subjidxact] = RegressEmos(emomeans,subjlist,corrcut,useratings);
+    
+    
+    if ~exist('corrcut')
+        corrcut = .4;
+    end;
+    if ~exist('useratings')
+        useratings = 4; % less than this rating not used
+    end;
+    
+    w=load('/data/common4/emotion/EmoValence.mat');
+    z=load('/data/common2/emotion/SubjRatings.mat');
+    
+    
+    subjidxval = [];
+    subjidxact = [];
+    for nxx = 1:length(subjlist)
+        nx = subjlist(nxx);
+        if ~isempty(useratings)
+            delems = find(z.ratings{nx} < useratings);
+            emomeans{nx}(:,delems) = [];
+            ev = w.emoval; ev = ev-mean(ev);
+            ev(delems) = [];
+            ea = w.emoactiv;ea = ea - mean(ea);
+            ea(delems) = [];
+        end;
+        % correlation with valence
+        mat4corr = repmat(ev,[size(emomeans{nx},1) 1]);
+        [corr,indx,indy,corrs] = matcorr(mat4corr,emomeans{nx});
+        [val idx] = sort(indy);
+        subjvalact{nx}(1,:) = corr(idx)';% put back into abs order
+        x = find(abs(subjvalact{nx}(1,:)) > corrcut);
+        valcorr{nx} = x;
+        subjidxval = [subjidxval;[repmat(nx,[length(x) 1]) x' subjvalact{nx}(1,x)']];
+        
+        % correlation with arousal
+        mat4corr = repmat(ea,[size(emomeans{nx},1) 1]);
+        [corr,indx,indy,corrs] = matcorr(mat4corr,emomeans{nx});
+        [val idx] = sort(indy);
+        subjvalact{nx}(2,:) = corr(idx)';% put back into abs order
+        y = find(abs(subjvalact{nx}(2,:)) > corrcut);
+        actcorr{nx} = y;    
+        subjidxact = [subjidxact;[repmat(nx,[length(y) 1]) y' subjvalact{nx}(2,y)']];
+    end;
+    % collect highly correlated IMs in each category
+
+    figure; pl = 1;
+    row = round(sqrt(length(subjlist))); col = ceil(sqrt(length(subjlist)));
+    scols = hsv(length(subjlist));
+    for nxx = 1:length(subjlist)
+        nx = subjlist(nxx);
+        sbplot(row,col,pl);
+        for im = 1:size(emomeans{nx},1)
+            ph = plot(subjvalact{nx}(2,im),subjvalact{nx}(1,im),'.'); hold on;
+            set(ph,'color',scols(pl,:));
+        end;
+        ph = plot([0 0],[get(gca,'ylim')],'k-');
+        ph = plot([get(gca,'xlim')],[0 0],'k-');
+        title(['Subj ',int2str(nx)]); pl = pl+1;
+    end;
+    

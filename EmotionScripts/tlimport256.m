@@ -1,0 +1,382 @@
+% procedures to import emotion data on 
+% 1600 blocks seems to be the limit on import, at least with 2GB
+%  event channel  =265
+%  ref'ed to 135,213.  E11,G21
+% chan 265 is the button press
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%  *** Import Button Only   ***  %%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+ % import with event channel 265, then keep only channel 257 (button press)
+EEG = pop_readbdf('/data/common1/emotion/tl81/tl81-Emotion.bdf', [1:999:1000] ,265,[]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 1,  'setname', 'emo 1 1000');
+EEG = pop_select( EEG, 'channel',257);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, 1);
+EEG = pop_readbdf('/data/common1/emotion/tl81/tl81-Emotion.bdf', [1001:999:2000] ,265,[]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 2,  'setname', 'emo 1001 2000');
+EEG = pop_select( EEG, 'channel',257);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, 2);
+EEG = pop_readbdf('/data/common1/emotion/tl81/tl81-Emotion.bdf', [2001:999:3000] ,265,[]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 3,  'setname', 'emo 2001-3000');
+EEG = pop_select( EEG, 'channel',257);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, 3);
+EEG = pop_readbdf('/data/common1/emotion/tl81/tl81-Emotion.bdf', [3001:999:4000] ,265,[]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 4,  'setname', 'emo 3001-4000');
+EEG = pop_select( EEG, 'channel',257);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, 4);
+EEG = pop_readbdf('/data/common1/emotion/tl81/tl81-Emotion.bdf', [4001:512:4513] ,265,[]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 5,  'setname', 'emo 4001-4513');
+EEG = pop_select( EEG, 'channel',257);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, 5);
+% merge and import log file
+EEG = pop_mergeset( ALLEEG, [1  2  3  4  5], 0);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'setname', 'Button Press, whole session', 'overwrite', 'on');
+EEG = pop_saveset( EEG, 'ButtonOnly2.set', '/data/common1/emotion/tl81/');
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ALLEEG(1)=[];
+ALLEEG(1)=[];
+ALLEEG(1)=[];
+eeglab redraw
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% remove boundary events and rename numbered events
+%for ev = 1:length(EEG.event)   % done
+%    if EEG.event(ev).type(1) == 'b'
+%        EEG.event(ev) = [];
+%    end;
+%end; % will exceed matrix dimensions if it takes any out
+%[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+%%%
+ff = {EEG.event.type};
+for f = 1:length(ff)
+    fff(1,f) = str2num(ff{f});
+end;
+
+chname = find(fff ==1);
+for f = 1:length(chname)
+EEG.event(chname(f)).type = 'intro';
+end;
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+
+
+
+eeglab
+emos = {'awe', 'frustration','joy','anger','sad','happy','fear','love' ,'jealousy','compassion','content','grief','relief','disgust','excite'};
+emobuts = {'bawe', 'bfrustration','bjoy','banger','bsad','bhappy','bfear','blove','bjealousy','bcompassion','bcontent','bgrief','brelief','bdisgust','bexcite'};
+ALLEEG=[];EEG=[];
+EEG = pop_loadset( 'ButtonOnly.set', '/data/common1/emotion/tl81/');
+[ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG);
+EEG = pop_eegfilt( EEG, 0, 2, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'setname', 'Button Press, whole session', 'overwrite', 'on');
+ eeglab redraw
+
+for k = 1:length(emos)
+    if k == 1
+        endt = 350;
+    else
+        endt=400;
+    end;    
+    EEG = pop_epoch( EEG, {  emos{k}  }, [-.5  endt], 'newname', emos{k}, 'epochinfo', 'yes');
+    [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'setname', emobuts{k});
+    EEG.data = rmbase(EEG.data,EEG.pnts,1:512); 
+    [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+    EEG = eeg_retrieve(ALLEEG, 1); CURRENTSET = 1;
+end;
+ ALLEEG(1)=[];
+for k = 1:length(emos)
+    EEG = eeg_retrieve(ALLEEG, k); CURRENTSET = k;
+    
+    for ev = 1:length(EEG.event)
+        if str2num(EEG.event(ev).type) == 24
+            seltime = EEG.event(ev).latency; break
+        end;
+    end;
+    EEG = pop_select( EEG, 'point',[1 seltime] );
+    [ALLEEG EEG] = eeg_store(ALLEEG, EEG, k);
+end;
+clear pressevents
+for k = 1:length(emos)
+    EEG = eeg_retrieve(ALLEEG, k); CURRENTSET = k;
+    maxdata = max(EEG.data);
+    thresh = maxdata*.35;  % sets threshold at 10% of max value
+    r=1; 
+    for g = 1: size(EEG.data,2)
+        if EEG.data(1,g)>thresh & EEG.data(1,g-1)<thresh
+            EEG.event(end+1).latency = g-50;r = r+1;  % make event 50 frames earlier than threshold
+            EEG.event(end).type = 'press';
+            EEG.event(end).Event_Type = 'Response';
+        end;    
+    end;
+    [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);  
+pressevents{k} = EEG.event(end-(r-2):end);
+end;
+eeglab redraw
+%figure;plot(EEG.data); %to make sure you got the right thing
+
+% to epoch on the button press only data:
+emonames = {'awePress', 'frustrationPress','joyPress','angerPress','sadPress','happyPress','fearPress','lovePress','jealousyPress','compassionPress','contentPress','griefPress','reliefPress','disgustPress','excitePress'};
+for k = 1:length(emonames)   
+    EEG = eeg_retrieve(ALLEEG, k); CURRENTSET = k;
+    EEG = pop_epoch( EEG,{'press'} , [-2  3], 'newname', emonames{k}, 'epochinfo', 'yes');
+    [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'setname', emonames{k},'overwrite','on');
+    EEG = pop_rmbase( EEG,[0 100]);
+    [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);  
+end;
+eeglab redraw
+
+
+
+figure; 
+for k = 1:length(emos)
+    EEG = eeg_retrieve(ALLEEG, k); CURRENTSET = k;
+    %diffpress = diff(diff(EEG.data));
+    %diffpress = diff(EEG.data);
+    diffpress = EEG.data;
+    diffpress = squeeze(diffpress);
+    subplot(4,4,k)
+% erpimage( diffpress, ones(1,size(diffpress,2))*EEG.xmax*1000, linspace(EEG.xmin*1000, EEG.xmax*1000, EEG.pnts-2),emos{k},0, 1 ,'erp','limits',[-50 2500 NaN NaN NaN NaN NaN NaN],'caxis',[-max(max(diffpress(501:600,:)))-100 max(max(diffpress(501:600,:)))-100]);
+% erpimage( diffpress, ones(1,size(diffpress,2))*EEG.xmax*1000, linspace(EEG.xmin*1000, EEG.xmax*1000, EEG.pnts-2),emos{k},0, 1 ,'erp','limits',[-50 2500 -20000 20000 NaN NaN NaN NaN],'caxis',[-4500 4500]);
+ erpimage( diffpress, ones(1,size(diffpress,2))*EEG.xmax*1000, linspace(EEG.xmin*1000, EEG.xmax*1000, EEG.pnts),emos{k},0, 1 ,'erp','limits',[-50 2500 -3000000 3000000 NaN NaN NaN NaN],'caxis',[-3000000 3000000]);
+end;
+figure;  k=9;
+     EEG = eeg_retrieve(ALLEEG, k); CURRENTSET = k;
+     diffpress = diff(diff(EEG.data));
+     %diffpress = diff(EEG.data);
+     %diffpress = EEG.data;
+     diffpress = squeeze(diffpress);
+  erpimage( diffpress, ones(1,size(diffpress,2))*EEG.xmax*1000, linspace(EEG.xmin*1000, EEG.xmax*1000, EEG.pnts-2),emos{k},0, 1 ,'erp','limits',[-50 650 -2000 2000 NaN NaN NaN NaN],'caxis',[-5000 5000]);
+     erpimage( diffpress, ones(1,size(diffpress,2))*EEG.xmax*1000, linspace(EEG.xmin*1000, EEG.xmax*1000, EEG.pnts),emos{k},0, 1 ,'erp','limits',[-50 650 -3000000 3000000  NaN NaN NaN NaN]);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+EEG = pop_readbdf(rawdat, [100:399:500] ,265,[135:78:213]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 1,  'setname', 'tl81 emo part 1 ');
+EEG = pop_select( EEG, 'nochannel',[257:264] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG.chanlocs=pop_chanedit(EEG.chanlocs,  'load',{ elpfile, 'filetype', 'autodetect'}, 'forcelocs',{0, 'X', 'B12'}, 'convert',{ 'chancenter',[],0});
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+%%  ***  Next use Button info to import and epoch real data  ***  %%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+% Import emotion data in three chunks, need to merge log file each time by shifts.
+eeglab
+rawdat = '/data/common1/emotion/tl81/tl81-Emotion.bdf';
+spath = '/data/common1/emotion/tl81/';
+elpfile = '/data/common1/emotion/tl81/tl81-256.elp';
+
+EEG = pop_readbdf(rawdat, [1:944:945] ,265,[135:78:213]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 1,  'setname', 'tl81 emo part 1 ');
+EEG = pop_select( EEG, 'nochannel',[257:264] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG.chanlocs=pop_chanedit(EEG.chanlocs,  'load',{ elpfile, 'filetype', 'autodetect'}, 'forcelocs',{0, 'X', 'B12'}, 'convert',{ 'chancenter',[],0});
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG = pop_select( EEG, 'nochannel',[255:256] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ EEG = pop_eegfilt( EEG, 0, 50, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, 'overwrite', 'on');
+EEG = pop_eegfilt( EEG, 1, 0, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'overwrite', 'on');
+EEG = pop_saveset( EEG, 'emo-1-254.set', spath);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ALLEEG=[]; EEG=[]; clear ans
+pack
+%%%%  block 2   %%%%%%%%%
+EEG = pop_readbdf(rawdat, [946:1014:1960] ,265,[135:78:213]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 1,  'setname', 'tl81 emo part 2  ');
+EEG = pop_select( EEG, 'nochannel',[257:264] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG.chanlocs=pop_chanedit(EEG.chanlocs,  'load',{ elpfile, 'filetype', 'autodetect'}, 'forcelocs',{0, 'X', 'B12'}, 'convert',{ 'chancenter',[],0});
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG = pop_select( EEG, 'nochannel',[255:256] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ EEG = pop_eegfilt( EEG, 0, 50, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, 'overwrite', 'on');
+EEG = pop_eegfilt( EEG, 1, 0, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'overwrite', 'on');
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG = pop_saveset( EEG, 'emo-2-254.set', spath);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ALLEEG=[];EEG=[]; clear ans
+pack
+%%%%%%  block 3  %%%%%%%
+EEG = pop_readbdf(rawdat, [1961:954:2915] ,265,[135:78:213]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 1,  'setname', 'tl81 emo part 3');
+EEG = pop_select( EEG, 'nochannel',[257:264] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG.chanlocs=pop_chanedit(EEG.chanlocs,  'load',{ elpfile, 'filetype', 'autodetect'}, 'forcelocs',{0, 'X', 'B12'}, 'convert',{ 'chancenter',[],0});
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG = pop_select( EEG, 'nochannel',[255:256] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ EEG = pop_eegfilt( EEG, 0, 50, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, 'overwrite', 'on');
+EEG = pop_eegfilt( EEG, 1, 0, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'overwrite', 'on');
+EEG = pop_saveset( EEG, 'emo-3-254.set', spath);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ALLEEG=[];EEG=[]; clear ans
+pack
+%%%%%%  block 4  %%%%%%%
+EEG = pop_readbdf(rawdat, [2915:865:3780] ,265,[135:78:213]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 1,  'setname', 'tl81 emo part 4');
+EEG = pop_select( EEG, 'nochannel',[257:264] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG.chanlocs=pop_chanedit(EEG.chanlocs,  'load',{ elpfile, 'filetype', 'autodetect'}, 'forcelocs',{0, 'X', 'B12'}, 'convert',{ 'chancenter',[],0});
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG = pop_select( EEG, 'nochannel',[255:256] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ EEG = pop_eegfilt( EEG, 0, 50, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, 'overwrite', 'on');
+EEG = pop_eegfilt( EEG, 1, 0, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'overwrite', 'on');
+EEG = pop_saveset( EEG, 'emo-4-254.set', '/data/common1/emotion/tl81/');
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ALLEEG=[];EEG=[]; clear ans
+pack
+%%%%%%  block 5  %%%%%%%
+EEG = pop_readbdf(rawdat, [3781:732:4513] ,265,[135:78:213]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 1,  'setname', 'tl81 emo part 5');
+EEG = pop_select( EEG, 'nochannel',[257:264] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG.chanlocs=pop_chanedit(EEG.chanlocs,  'load',{ elpfile, 'filetype', 'autodetect'}, 'forcelocs',{0, 'X', 'B9'}, 'convert',{ 'chancenter',[],0});
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+EEG = pop_select( EEG, 'nochannel',[255:256] );
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ EEG = pop_eegfilt( EEG, 0, 50, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, 'overwrite', 'on');
+EEG = pop_eegfilt( EEG, 1, 0, [], [0]);
+[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'overwrite', 'on');
+EEG = pop_saveset( EEG, 'emo-5-254.set', spath);
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+ALLEEG=[];EEG=[]; clear ans
+ eeglab redraw
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+ % write into data info:
+ tl81  - ~23 yo female
+data collected on May 12, 2004  using 256 (265 including analog) Biosemi acquisition system
+merged with presentation log file 
+file includes subject debrief and photos of electrodes. Data collected by julie, jenny
+Had some 60 Hz noise in data when ran through analog box. Partly alleviated by grounding, 
+filtered 1 50
+no log file merge, need to rename events manually
+
+% Look at data and find bad channels
+remove = [47,116,137,180,196,199,209,218,220,221,222,224,230];
+datset = {'emo-1-254.set','emo-2-254.set','emo-3-254.set','emo-4-254.set','emo-5-254.set'};
+datset2 = {'emo-1-241.set','emo-2-241.set','emo-3-241.set','emo-4-241.set','emo-5-241.set'};
+floatset = {'/data/common1/emotion/tl81/emo1.fdt','/data/common1/emotion/tl81/emo2.fdt','/data/common1/emotion/tl81/emo3.fdt','/data/common1/emotion/tl81/emo4.fdt','/data/common1/emotion/tl81/emo5.fdt'};
+for r = 1:length(datset)
+    EEG = pop_loadset( datset2{r},'/data/common1/emotion/tl81/'); 
+    [ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG);
+    %EEG = pop_select( EEG, 'nochannel',remove );
+    %[ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, 'overwrite', 'on');
+    %EEG = pop_saveset( EEG,datset2{r} , '/data/common1/emotion/tl81/');
+    %[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+    % try cutting up, rejecting epochs and reshaping back
+    for evtm = 384:768:size(EEG.data,2)-384  % go up by 3 sec to create 3 sec epochs
+        EEG.event(end+1) =  EEG.event(1);% appends events to the end
+        EEG.event(end).latency = evtm;
+        EEG.event(end).type = 1000;        
+    end;
+    EEG = pop_epoch( EEG,{1000} , [-1.5 1.5]);
+    [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,'overwrite','on');
+    EEG = pop_rmbase( EEG,[-1500 1500]);
+    [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+    EEG = pop_rejkurt(EEG,1,[1:size(EEG.data,1)] ,4,4,0,1);        
+    EEG = pop_jointprob(EEG,1,[1:size(EEG.data,1)] ,4,4,0,1);
+    EEG.data = reshape(EEG.data,size(EEG.data,1),size(EEG.data,2)*size(EEG.data,3));
+    floatwrite(EEG.data, floatset{r});
+    numframes(1,r) = size(EEG.data,2);
+    ALLEEG=[];EEG=[];
+end;
+numframes =  (cleaned data)
+
+      158208  +    182784  +   162048  +    170496   +   125952
+
+
+sum = 799488
+
+% now in linux
+
+cat emo1.fdt emo2.fdt  emo3.fdt  emo4.fdt  > emoall.fdt
+% sets: 1:4= 673536 (old fdt versions)
+%prior to epoched/cleaned sets: all  5 too much, 1-4 too much; 1,2,3,5 doesn't work- total: 950528 frames
+% trying 1,2,4,5: 924928 frames: NOPE;  trying 1,2,3: NOPE,  trying: 1,2,4:742400: NOPE, trying: 1,2,5:694528: YES, this works  
+/data/common/matlab/ica_linux2.4 < /data/common1/emotion/tl81/tlemoICA241.sc
+
+
+eeglab
+ EEG = pop_loadset( 'emo-1-241.set', '/data/common2/emotion/tl81/');
+[ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG);
+
+
+
+sph=floatread('/data/common2/emotion/tl81/sph241.sph',[241 241]); 
+wts=floatread('/data/common2/emotion/tl81/wts241.wts',[160 241]); 
+EEG.icaweights=wts;
+EEG.icasphere=sph;
+EEG.icawinv=[];
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+pop_topoplot(EEG,0, [37:72] , 'tl82 Emotion Comps ',[6 6] ,0, 'electrodes', 'off', 'plotrad',0.5, 'masksurf', 'on');
+37:72
+
+%subj = [1,3:23,25:30,34,35,36];
+subj = [1,3:22,25:30,34,36];  % tl81  23,35 =pulse; 
+figure; pl=1;  row = ceil(length(subj)/3); col = 9;
+for c = 1:length(subj)
+    cc=subj(c);
+    subplot(row,col,pl);
+    topoplot(EEG.icawinv(:,cc),EEG.chanlocs,  'electrodes', 'off', 'plotrad',0.5);
+    title(int2str(cc));
+    subplot(row,col,pl+1:pl+2);    
+    psd(EEG.icaact(cc,:),512,EEG.srate,512);hold on;
+    title(int2str(cc));
+    set(gca,'xtick',[5:5:40]);
+    set(gca,'xlim',[1 40]);
+    set(gca,'xgrid','on');
+    pl=pl+3;
+end;
+ph=textsc('tl81 Emotion Component Spectra (PCA to 100) from 241 chan data, set 1','title');
+set(ph,'fontsize',14);
+
+
+% epoch on emotion til stop event 
+% long emo length = 235 sec
+spath = '/data/common1/emotion/tl81/';
+datsets = {'emo-1-241.set','emo-2-241.set','emo-3-241.set','emo-4-241.set','emo-5-241.set'};
+emos = {'awe', 'frustration','joy','anger','sad','happy','fear','love' ,'jealousy','compassion','content','grief','relief','disgust','excite'};
+%emos = {'prebase','postbase'};
+% do 'prebase','postbase', separately (without press events lines)
+%%**  get pressevents first to mark first button press
+
+    ALLEEG=[];EEG=[];
+for ds = 1:length(datsets)
+    EEG = pop_loadset( datsets{ds}, spath);
+    [ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG);  
+    for emo = 1:length(emos)
+        if ~isempty(find(ismember({EEG.event.type}, emos{emo})))
+            stf = EEG.event(find(ismember({EEG.event.type}, emos{emo}))).latency;
+            endf = EEG.event(find(ismember({EEG.event.type}, emos{emo}))+1).latency;
+            endt = endf/256;  stt = stf/256;  eptime = endt-stt;
+            EEG = pop_epoch( EEG, {  emos{emo}  }, [-.5  eptime], 'newname', emos{emo}, 'epochinfo', 'yes');
+            [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET,  'setname', emos{emo});
+            EEG.data = rmbase(EEG.data,EEG.pnts,1:EEG.pnts); 
+            [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+            EEG.event(end+1).type = 'press1';            
+            EEG.event(end).latency = pressevents{emo}(1).latency;
+            EEG.event(end).epoch = 1;            
+            for rr = 1:length(pressevents{emo})
+                EEG.event(end+1).type = 'press';            
+                EEG.event(end).latency = pressevents{emo}(rr).latency;
+                EEG.event(end).epoch = 1; 
+            end;      
+            EEG = eeg_checkset(EEG, 'eventconsistency');
+            [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+            EEG = pop_saveset( EEG,emos{emo} , spath);
+            [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+            ALLEEG = pop_delset( ALLEEG, [2] );
+        end;
+        EEG = eeg_retrieve(ALLEEG, 1); CURRENTSET = 1;
+    end;
+    ALLEEG=[];EEG=[];
+end;
+

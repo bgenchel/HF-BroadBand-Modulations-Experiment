@@ -1,0 +1,40 @@
+% use plain ICA to find emotion space for all subjects
+%
+%
+%
+%
+%
+%
+% emomeans -- {nx}(dim,emo)
+%
+
+function [emomeans] = EmoSpacebyICA(savedat,fullpaths,gdcomps,subjlist);
+    
+    
+    %[emoorders] = FindEmoOrder(fullpaths,emos);
+    clear   emomeans
+    for nxx = 1:length(subjlist)   
+      nx = subjlist(nxx);
+        emeans = zeros(15,15);
+        s = load([fullpaths{nx},savedat,'.mat']);  
+        sph=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.sph'],[s.numtrials s.numtrials],[],0); 
+        wts=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.wts'],[s.pcs s.numtrials],[],0); 
+        ws = wts*sph;     icawinv = pinv(ws); icawinv = icawinv';
+        newwinv = zeros(15,size(icawinv,2));
+
+        % Convert raw activations matrix to stds before mean (added july 12)
+        for dim = 1:size(icawinv,1)
+            newwinv(dim,:) = icawinv(dim,:)/std(icawinv(dim,:));
+        end; % makes a dim X windows matrix
+        
+        for dim = 1:size(newwinv,1) % for all (new)dims...
+            for e = 1:length(s.dstrials) % break up windows into emos...
+                emeans(dim,e) = mean(newwinv(dim,sum(s.dstrials(1:e-1))+1:sum(s.dstrials(1:e))));
+            end;
+        end; % makes a 15 dims X 15 emotions matrix
+        emomeans{nx} = emeans;
+        fprintf('Subject %s of %s total subjs done.\n',int2str(nx),int2str(length(subjlist)));
+    end;
+   
+    
+    

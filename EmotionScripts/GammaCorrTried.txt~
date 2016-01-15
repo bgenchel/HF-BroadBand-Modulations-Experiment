@@ -1,0 +1,9 @@
+I have tried the following things to find correlations between
+emotion and gamma IMs:
+
+1) correlation via 'matcorr()'and regress()
+   results showed only about ~8 IMs with sig correlation by
+   p value of regress(). This was only in clusters 1/2, so 
+   both brain and muscle had some correlation. Correlation
+   was with behavioral ratings of VALENCE, while almost none
+   with arousal.

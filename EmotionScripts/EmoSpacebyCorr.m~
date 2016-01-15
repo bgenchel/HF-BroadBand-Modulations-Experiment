@@ -1,0 +1,54 @@
+% creates a matrix of IM Pairs X emotions giving correlation of 'time course' of each IM
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+
+function EmoSpacebyCorr(savedat,fullpaths,subjlist)
+    
+    keyboard
+
+    for nxs = 1:length(subjlist)
+        nx = subjlist(nxs);
+        s = load([fullpaths{nx},savedat,'.mat']);  
+        sph=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.sph'],[s.numtrials s.numtrials],[],0); 
+        wts=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.wts'],[s.pcs s.numtrials],[],0); 
+        ws = wts*sph;     corrwinv = pinv(ws); 
+        %%%%%%%%%%
+        pl = 1; clear corr
+        for im1 = 1:size(corrwinv,2) - 1
+            for im2 = im1+1:size(corrwinv,2)
+                for e = 1:length(s.dstrials)
+                    [corr(pl,e),indx,indy,corrs] = matcorr(corrwinv(sum(s.dstrials(1:e-1))+1:sum(s.dstrials(1:e)),im1)',corrwinv(sum(s.dstrials(1:e-1))+1:sum(s.dstrials(1:e)),im2)');
+                end;
+                dimpairs(pl,:) = [im1,im2];
+                pl= pl+1;                
+            end;
+        end;
+        winv = corr';
+        cols = jet(15);cols(10,:) = [.9 .9 0];
+        emo2 = {'  anger','  frustration','  jealousy','  fear' ,'  disgust','  grief','  sad','  compassion','  love','  relief','  content','  awe','  happy','  joy','  excited'};
+        figure;  % for one point per emotion (mean)
+        currlist = [91:105];pl = currlist(1);
+        for wvv = 1:30
+            wv = currlist(wvv);
+            %sbplot(round(sqrt(size(winv,2))),ceil(sqrt(size(winv,2))),wv)
+            sbplot(round(sqrt(30)),ceil(sqrt(30)),wvv)
+            for e = 1:size(winv,1)
+                ph=plot(e,winv(e,wv),'.');hold on;
+                set(ph,'markersize',20);set(ph,'color',cols(e,:));
+                ph = text(e,winv(e,wv),emo2{e});
+                set(ph,'color',cols(e,:)); 
+            end;
+            set(gca,'ylim',[-1 1]);
+            title([int2str(dimpairs(pl,1)),'-',int2str(dimpairs(pl,2))]); pl = pl+1;
+        end;axcopy
+        
+    end;
+    

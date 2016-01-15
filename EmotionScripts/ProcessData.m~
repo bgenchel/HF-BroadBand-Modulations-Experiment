@@ -1,0 +1,188 @@
+%%  follows from PreProcess.m to run emotion analysis on spectral data
+
+addpath('/home/julie/MatlabScripts/emotion')
+DataInfo    % this matlab files loads all subject info needed
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+subjlist = [2:36]; % don't use tl81, events screwed up.
+subjlist = [1:12]; % Repetitve button presses
+subjlist = [21,23:26]; % only when 'feeling it' button presses (no mr72-2)
+subjlist = [1:12,21:26]; % all button presses, early and 'only when you feel it' subjects
+subjlist = [13:20,36]; % no button press (apart from the first one)
+subjlist = [1,2,4:6,8:12,14,17:21,23,25:30,31,33,34,35,36]; % all 'good' subjects (ones that said they got into it)
+subjlist = [2:21,23:36];  % all but mr72-2
+subjlist = [2:7,9:21,23:34,35,36];  % no mr72-2, tl81 or ar81
+subjlist = [1,3:9,12,14,16,17,19,21,22,23,24,26,27,29,33,36]; % females
+subjlist = [1,4:6,8,9,12,14,17,19,21,23,26,27,29,33,36]; % 'good' females
+subjlist = [2,10,11,13,15,18,20,25,28,30,31,32,34,35]; % males
+subjlist = [2,10,11,18,20,25,28,30,31,34]; % 'good' males
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+s = load([fullpaths{nx},savedat,'.mat']);     
+wts = floatread([fullpaths{nx},savedat,'.wts'],[s.pcs s.numtrials],[],0);
+sph = floatread([fullpaths{nx},savedat,'.sph'],[s.numtrials s.numtrials],[],0);  
+ws = wts*sph;winv = pinv(ws);
+[wts2,sph2,compvars,bias,signs,lrates,act2] =runica(winv','weights',1e-7,'pca',2);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+[emomeans] = EmoSpacebyICA(savedat,fullpaths,gdcomps,subjlist);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+cols = jet(15);cols(10,:) = [.9 .9 0];
+emo2 = {'  anger','  frustration','  jealousy','  fear' ,'  disgust','  grief','  sad','  compassion','  love','  relief','  content','  awe','  happy','  joy','  excited'};
+figure;  row = 4; col = 5; pl=1;
+for nxx=1:length(subjlist)
+    nx = subjlist(nxx);
+    dd = pdist( emomeans{nx}', 'correlation') ;    
+    [md,STRESS,DISPARITIES] = mdscale(dd,2);
+    winv = md;
+    sbplot(row,col,pl)    
+    c1 = 1; c2 = 2;
+    % for one point per emotion (mean)
+    for e = 1:size(md,1)
+        ph=plot(md(e,c1),md(e,c2),'.');hold on;
+        set(ph,'markersize',20);set(ph,'color',cols(e,:));
+        ph = text(md(e,c1),md(e,c2),emo2{e});
+        set(ph,'color',cols(e,:)); 
+    end;
+    title(['Sbj ',int2str(nx)]); set(gca,'xticklabel',[]);pl = pl+1;
+end;
+axcopy
+set(gcf,'PaperOrientation','landscape');set(gcf,'PaperPosition',[0.25 0.25 10.5 8]); 
+textsc(['Multidimensional Scaling of Individual Subjects'],'title');
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+for nx = 1:length(fullpaths)
+    EEG = pop_loadset('ButtonOnly.set',fullpaths{nx},'all');
+    emord = cell(1,0);
+    for ev = 1:length(EEG.event)
+        if ~isempty(find(strcmp(EEG.event(ev).type,emos)))
+            emord = [emord EEG.event(ev).type];
+        end;
+    end;
+    emoorders{nx} = emord;
+end;
+
+%%%%%%%%%%%%
+emopair = [7 13]; % sad vs happy
+clear distr
+for im = 1:size(winv,2)
+    for emo = 1:2
+        distr{emo}(:,im) = winv(sum(s.dstrials(1:emopair(emo)-1))+1:sum(s.dstrials(1:emopair(emo))),im);
+    end;
+end;
+figure; srt = 0;y=[1:15];%y=[3,5,6,9,10,14];
+for dd=1:size(winv,2)
+    d = y(dd);
+    sbplot(4,4,dd);set(gca,'fontsize',16);
+    if srt == 1
+        plot([1:size(distr{1},1)]/size(distr{1},1)*100,sort(distr{1}(:,d)),'linewidth',2.5); hold on;
+        plot([1:size(distr{2},1)]/size(distr{2},1)*100,sort(distr{2}(:,d)),'r','linewidth',2.5); 
+    else
+        plot(distr{1}(:,d)); hold on;
+        plot(distr{2}(:,d),'r');
+    end;
+        title(['IM ',int2str(d)]);
+    set(gca,'ylim',[-2 2]);set(gca,'xticklabel',[]);
+end;
+diffims = [1,4,5,8,12,14,16];ori = [1,1,1,1,1,-1,-1];
+diffims = [4,6];
+figure;
+for im = 1:length(diffims)
+    ph = plot(distr{1}(:,diffims(im)),'b'); hold on;
+    ph = plot(distr{2}(:,diffims(im)),'r'); hold on;
+end;
+PlotSpecFacEnv('sources.set',savedat,fullpaths{nx},diffims{nx},gdcomps{nx},[],ori,[3 50],1,.99,0);  
+PlotSpecFacEnv('sources.set',savedat,fullpaths{nx},diffims{nx},gdcomps{nx},[sum(s.dstrials(1:emopair(1)-1))+1:sum(s.dstrials(1:emopair(1)))],ori,[3 50],1,.99,1);  
+PlotSpecFacEnv('sources.set',savedat,fullpaths{nx},diffims{nx},gdcomps{nx},[sum(s.dstrials(1:emopair(2)-1))+1:sum(s.dstrials(1:emopair(2)))],ori,[3 50],1,.99,1);  
+
+diffims = [3,5,6,9,10,14];
+diffcps = [3,8,13,16];
+diffims = [3,5,6,9,10];
+diffcps = [3,8,13];
+[keepprojH,freqs] = PlotSpecFacEnv('sources1.set',savedat,fullpaths{nx},diffims,diffcps,[sum(s.dstrials(1:emopair(2)-1))+1:sum(s.dstrials(1:emopair(2)))],0,[3 50],1,.99,0);  
+[keepprojS,freqs] = PlotSpecFacEnv('sources1.set',savedat,fullpaths{nx},diffims,diffcps,[sum(s.dstrials(1:emopair(1)-1))+1:sum(s.dstrials(1:emopair(1)))],0,[3 50],1,.99,0);  
+ 
+for cp =  1:size(keepprojH,3)
+    figure;cols = hsv(size(keepprojH,1));
+    for im = 1:size(keepprojH,1)
+        ph = plot(freqs,keepprojH(im,:,cp)-keepprojS(im,:,cp),'k-','linewidth',2.5);hold on;
+        set(ph,'color',cols(im,:));
+    end;
+    set(gca,'xlim',[3.5 45]); set(gca,'fontsize',20);
+    title(['IC ',int2str(diffcps(cp))]);
+end;
+
+[H,P,CI,STATS] = ttest2(distr{1},distr{2},.0000001);
+[3,5,6,9,10]
+        
+        [diffims,P] = CheckEmoShifts(savedat,fullpaths,subjlist,emopair,.00000000001);
+PlotSpecCoModAcrSubj('sources1.set',fullpaths,savedat,gdcomps,diffims,[3 45],12,'IMs with Sig Diff Happy/Sad Weights');
+PlotSpecCoModClusts(fullpaths,savedat,gdcomps,diffims,figinfo);
+data = floatread([fullpaths{nx},savedat,'.fdt'],[s.numtrials s.numframes],[],0);  
+%%%%%%%%%%%%
+figure; row =4;col=4; place = 1; labels = 1; 
+[place] = PlotSubjBackProjs(fullpaths{nx},savedat,emos,[1:15],1,emoorders{nx},row,col,place,labels); % presentation order
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+frqlim = [3 50];freq = 10;
+datsets = {'sad.set','happy.set'};
+events = {{'sad',[]},{'happy',[]}};
+for nx = 1:length(gdcomps)
+    EEG = pop_loadset('sources.set',fullpaths{nx},'all');    
+figure; topoplot([],EEG.chanlocs, 'style', 'blank',  'electrodes', 'numpoint', 'chaninfo', EEG.chaninfo);
+    artifact = [1:size(EEG.icawinv,2)]; artifact(gdcomps) = [];
+     x={EEG.chanlocs.X};  x = cell2mat(x);
+     y={EEG.chanlocs.Y};  y = cell2mat(y);
+     chancand = find(x>.06 & x<.08 & y> .05& y < .06);     
+     chans(1) = chancand(1);
+     chancand = find(x>.06 & x<.08 & y> -.06& y < -.05);
+     chans(2) = chancand(1);
+     ALLEEG=[];EEG=[];
+     if ~isempty(chans(1)) & ~isempty(chans(2))
+    [contrib{nx},speccomp{nx},contribics{nx},p{nx},fbins] = ChanSpecDiffs(datsets,fullpaths{nx},events,chans,gdcomps{nx},artifact,frqlim,freq);
+    end;
+end;
+
+EEG = pop_loadset('sources.set',fullpaths{nx},'all');  
+ch = 1; ds = 2;
+
+for ch = 1:size(contrib{nx},1)
+    figure; row = round(sqrt(length(gdcomps{nx}))); col = ceil(sqrt(length(gdcomps{nx})));
+    for cp = 1:length(gdcomps{nx})
+        sbplot(row,col,cp)
+        topoplot(EEG.icawinv(:,gdcomps{nx}(cp)),EEG.chanlocs);
+        title(num2str(round(contrib{nx}(ch,gdcomps{nx}(cp),ds)*1000)/1000));
+    end;
+    textsc(['Percent Power Accounted for at Channel ',int2str(chans(ch))],'title');
+end;
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% check for power assymetry between left and right frontal ics
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nx = 30; chans = [2 242];
+freq = 10;
+frqlim = [3 45];
+datset = {'sad.set','happy.set'};
+events = {{'sad',[]},{'happy',[]}};
+
+
+EEG = pop_loadset('sources1.set',fullpaths{nx},'all');  
+[sources X Y Z XE YE ZE] = dipplot( EEG.dipfit.model , 'coordformat','spherical', 'mri', '/data/common/matlab/eeglab/plugins/dipfit2.1/standard_BESA/avg152t1.mat', 'normlen', 'on','projlines','on');
+%dipplot( EEG.dipfit.model(gdcomps{nx}) , 'coordformat','spherical', 'mri', '/data/common/matlab/eeglab/plugins/dipfit2.1/standard_BESA/avg152t1.mat', 'normlen', 'on','gui','off','summary','on');
+%  figure; dipplot( EEG.dipfit.model(gdcomps) , 'coordformat','spherical', 'mri', '/data/common/matlab/eeglab/plugins/dipfit2.1/standard_BESA/avg152t1.mat', 'normlen', 'on','gui','off','projimg','on');
+for ic = 1:length(sources)
+    x(1,ic) = sources(ic).talcoord(1,1);
+    y(1,ic) = sources(ic).talcoord(1,2);
+    rvs(1,ic) = sources(ic).rv;
+end;    
+Rics = find(x > 0 & y > -80 & rvs < .15);
+Lics = find(x < 0 & y > -80 & rvs < .15);
+%%% Plot the chosen ICs
+ pop_topoplot(EEG,0, rtf , [fullpaths{nx}(end-4:end-1),' Right Hemisphere ICs'],[] ,0, 'electrodes', 'off', 'masksurf', 'on');
+ pop_topoplot(EEG,0, ltf , [fullpaths{nx}(end-4:end-1),' Left Hemisphere ICs'],[] ,0, 'electrodes', 'off', 'masksurf', 'on');
+ pop_topoplot(EEG,0, gdcomps, [fullpaths{nx}(end-4:end-1)],[] ,0, 'electrodes', 'off', 'masksurf', 'on');
+%%%% find power for all chosen ICs
+ [contrib,speccomp,cics,p,fbins] = LRicDiffs(datset,fullpaths{nx},events,Lics,Rics,frqlim,freq);
+ 
+
+ pop_topoplot(EEG,0, [21,40,44,68,80,83] , [fullpaths{nx}(end-4:end-1),' Contributors to frontal 10 Hz'],[] ,0, 'electrodes', 'off', 'masksurf', 'on');
+ pop_topoplot(EEG,0,combics, [fullpaths{nx}(end-4:end-1),' Contributors to frontal 10 Hz'],[] ,0, 'electrodes', 'off', 'masksurf', 'on');

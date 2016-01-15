@@ -1,0 +1,103 @@
+% clusters emotion indicator vectors from context single-trial decomposition across subjects
+%
+%
+% subjlist -- [vector] list of subject indexes to cluster among
+% fullpaths -- [cell array of strings] full paths to directories of ALL subjects (indexes point
+%              to subjects of interest
+% savedat -- [string] prefix under which data is saved for all subjects in resp. directories
+% clustby -- [string] 'e'-emotion, 's'-spectra, 'b'-both
+% 
+%
+
+function [clustmat,keeptrack] = ClustEmoCtx(subjlist,fullpaths,savedat,clustby);
+
+    
+    keeptrack = zeros(0,2);
+    if clustby == 'e'
+        clustmat = zeros(0,15);
+        for nxx = 1:length(subjlist)
+            nx = subjlist(nxx);
+            s = load([fullpaths{nx},savedat,'Stuff.mat']);         
+            data = floatread([fullpaths{nx},savedat,'.fdt'],[15+s.pcnum inf],[],0);
+            sph=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.sph'],[s.numtrials s.numtrials],[],0); 
+            wts=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.wts'],[s.pcs s.numtrials],[],0); 
+            pcaeig = floatread([fullpaths{nx},savedat,'EIGVEC.fdt'],[length(s.freqs) s.pcnum],[],0);   
+            ws = wts*sph;    
+            if size(ws,1) == size(ws,2)
+                winv = inv(ws); 
+            else
+                winv = pinv(ws);
+            end;
+            activations = ws*data;
+            clear wts sph ws emowts
+            for fac = 1:size(activations,1)
+                backproj = winv(:,fac) * activations(fac,:);
+                emowts(fac,:) = mean(backproj(s.pcnum+1:end,find(activations(fac,:)> mean(activations(fac,:) + 3*std(activations(fac,:))))),2); %pos weights
+           end;
+            %emowts = winv(size(pcaeig,2)+1:end,:)';
+            clustmat(end+1:end+s.pcs,:) = emowts;
+            keeptrack(end+1:end+s.pcs,:) = [repmat(nx,[s.pcs 1]) [1:s.pcs]'];
+        end;
+        
+    elseif clustby == 's'
+        clustmat = zeros(0,99);
+        for nxx = 1:length(subjlist)
+            nx = subjlist(nxx);
+            s = load([fullpaths{nx},savedat,'Stuff.mat']);         
+            data = floatread([fullpaths{nx},savedat,'.fdt'],[15+s.pcnum inf],[],0);
+            sph=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.sph'],[s.numtrials s.numtrials],[],0); 
+            wts=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.wts'],[s.pcs s.numtrials],[],0); 
+            pcaeig = floatread([fullpaths{nx},savedat,'EIGVEC.fdt'],[length(s.freqs) s.pcnum],[],0);    
+            ws = wts*sph;    
+            if size(ws,1) == size(ws,2)
+                winv = inv(ws); 
+            else
+                winv = pinv(ws);
+            end;
+            activations = ws*data;
+            clear wts sph ws
+            fprintf('Subj %s\n',int2str(nx))
+            for fac = 1:size(activations,1)
+            fprintf('Fac %s\n',int2str(fac))
+                backproj = winv(:,fac) * activations(fac,:);
+                backproj = pcaeig*backproj(1:s.pcnum,:);
+                cutval = mean(activations(fac,:)) + 2*std(activations(fac,:));
+                spectemps(fac,:) = mean(backproj(:,find(activations(fac,:)> cutval)),2)';
+            end;
+            %spectemps = winv(1:size(pcaeig,2),:)'*pcaeig';
+            clustmat(end+1:end+s.pcs,:) = spectemps;     
+            keeptrack(end+1:end+s.pcs,:) = [repmat(nx,[s.pcs 1]) [1:s.pcs]'];
+        end;
+        
+    elseif clustby == 'b'
+        clustmat = zeros(0,114);
+        for nxx = 1:length(subjlist)
+            nx = subjlist(nxx);
+            s = load([fullpaths{nx},savedat,'Stuff.mat']);         
+            data = floatread([fullpaths{nx},savedat,'.fdt'],[15+s.pcnum inf],[],0);
+            sph=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.sph'],[s.numtrials s.numtrials],[],0); 
+            wts=floatread([fullpaths{nx},savedat,'PC',int2str(s.pcs),'.wts'],[s.pcs s.numtrials],[],0); 
+            pcaeig = floatread([fullpaths{nx},savedat,'EIGVEC.fdt'],[length(s.freqs) s.pcnum],[],0);    
+            ws = wts*sph;    
+            if size(ws,1) == size(ws,2)
+                winv = inv(ws); 
+            else
+                winv = pinv(ws);
+            end;
+            activations = ws*data;
+            clear wts sph ws spectemps
+            for fac = 1:size(activations,1)
+                backproj = winv(:,fac) * activations(fac,:);
+                specs = pcaeig*backproj(1:s.pcnum,:);
+                backproj = [specs;backproj(s.pcnum+1:end,:)];
+                spectemps(fac,:) = mean(backproj(:,find(activations(fac,:)> mean(activations(fac,:) + 2*std(activations(fac,:))))),2)';
+            end;            
+            clustmat(end+1:end+s.pcs,:) = spectemps;     
+            %spectemps = winv(1:size(pcaeig,2),:)'*pcaeig';
+            %emowts = winv(size(pcaeig,2)+1:end,:)';
+            %clustmat(end+1:end+s.pcs,:) = [spectemps emowts];     
+            keeptrack(end+1:end+s.pcs,:) = [repmat(nx,[s.pcs 1]) [1:s.pcs]'];
+        end;        
+    end;
+    
+

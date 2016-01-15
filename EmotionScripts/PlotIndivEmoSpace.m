@@ -1,0 +1,115 @@
+% plots the results of IndivEmoSpace()
+%
+%
+%
+%
+% emli
+
+function PlotIndivEmoSpace(clustlist,specs,complist,fullpaths,emlist,printpath);
+
+    
+%%%%%%%%%%%%%%%%%%%%%  
+    clss = {'Alpha','Beta','Gamma'};
+    emos = {'anger','frustration','jealousy','fear' ,'disgust','grief','sad','compassion','love','relief','content','awe','happy','joy','excite'}; % for all new ones
+    % Now plot the results...
+    r = load('/data/common4/emotion/CoModAlphaClusts.mat'); % just to get r.frs
+    q = load('/data/common4/emotion/clustfacs.mat');
+    for emm = 1:length(emlist)
+        em = emlist(emm);  pg = 0;
+        figure;row = 6; col = 4;pl = 1; zoom = 1.45;
+        for cls = 1:8
+            if cls == 4
+                textsc(['Contributing Clusters to ',emos{em}],'title'); pg = pg+1; %axcopy
+                if length(emlist) == 15
+                    str = ['print ',printpath,emos{em},clss{pg},'.jpg -djpeg']; eval(str);
+                    close
+                end;
+                figure;row = 4; col = 4;pl = 1;   zoom = .95;             
+            end;                
+            if cls == 6
+                textsc(['Contributing Clusters to ',emos{em}],'title'); pg = pg+1;  %axcopy
+                if length(emlist) == 15
+                    str = ['print ',printpath,emos{em},clss{pg},'.jpg -djpeg']; eval(str);
+                    close
+                end;
+                figure;row = 6; col = 4;pl = 1;   zoom = 1.45;               
+            end;                
+            if length(clustlist{em}) > cls-1
+                if ~isempty(clustlist{em}{cls})
+                    for pos = 1:2
+                        numsubjs = zeros(1,0); numfacs = 0; numcomps = 0;
+                        clear wtsmat frqmat corecomps
+                        cplist = [];
+                        plotfacs = zeros(0,length(r.frs));
+                        for nx = 1:length(clustlist{em}{cls})  
+                             cl = [];
+                            if pos == 1
+                                if ~isempty(find(clustlist{em}{cls}{nx}>0))
+                                    cl = unique(clustlist{em}{cls}{nx});
+                                    cl(find(cl < 0)) = []; 
+                                end;
+                            else
+                                if ~isempty(find(clustlist{em}{cls}{nx}<0))
+                                    cl = unique(clustlist{em}{cls}{nx});
+                                    cl(find(cl > 0)) = []; cl = abs(cl);
+                                end;
+                            end;  
+                            if ~isempty(cl)
+                                cc = zeros(1,0);
+                                for fc = 1:length(cl)
+                                    fac = cl(fc);
+                                    tmplist = zeros(1,0);
+                                    for w = 1:length(complist{nx})
+                                        if ismember(complist{nx}(w),q.allbigs{nx}{fac})
+                                            tmplist(1,end+1) = complist{nx}(w);numcomps=numcomps+1;
+                                        end;                    
+                                    end;      
+                                    cc(1,end+1) = q.onebig{nx}{fac};
+                                    wtsmat{nx}{fc} = q.bigwts{nx}{fac};
+                                    frqmat{nx}{fc} = 10;
+                                    %frqmat{nx}{fc} = frqcell{clust}{nx}(fac);
+                                    cplist{nx}{fc} = tmplist;
+                                    fprintf('\n%s  %s\n',int2str(nx),int2str(tmplist));
+                                    numfacs = numfacs+1;
+                                end;
+                                corecomps{nx} = cc;
+                                numsubjs(1,end+1) = nx;
+                            end;
+                        end;
+                        numsubjs = unique(numsubjs); numsubjs = length(numsubjs);
+                        if ~isempty(cplist)
+                        if numsubjs > 1
+                            plotfacs(end+1:end+size(specs{em}{pos}{cls},1),:) = specs{em}{pos}{cls};
+                            frqmat = []; wtlims = [1 2];frqlims = []; yon = 1;
+                            %wtsmat = [];wtlims = [];frqlims = [8 12];yon = 0;
+                            viewnum = 3;
+                            [allspots] = PlotCrossLinesWts(cplist,fullpaths,'sources1.set',corecomps,wtsmat,wtlims,frqmat,frqlims,row,col,pl,zoom,0,[],viewnum);
+                            pl = pl+3;
+                            sbplot(row,col,pl)
+                            plot(r.frs,plotfacs);hold on;set(gca,'fontsize',8); pl = pl+1;
+                            ph = plot([get(gca,'xlim')],[0 0],'k-');
+                            ph = plot(r.frs,mean(plotfacs,1),'k-');set(ph,'linewidth',2);
+                            set(gca,'ylim',[-10 10]); 
+                            set(gca,'xgrid','on'); 
+                            if pl ~= row*col
+                                set(gca,'xticklabel',[]);
+                            end;                            
+                            if yon == 0
+                                set(gca,'yticklabel',[]);
+                            end;        
+                            set(gca,'xlim',[r.frs(1) r.frs(end)]);  %xlabel('Frequency (Hz)');
+                            title(['Cls ',int2str(cls),'; ',int2str(numfacs),' Facs; ',int2str(numsubjs),' Subjs']);
+                        end; 
+                        end;
+                    end;
+                end;
+            end;
+        end;
+        textsc(['Contributing Clusters to ',emos{em}],'title'); pg = pg+1; %axcopy
+        if length(emlist) == 15
+            str = ['print ',printpath,emos{em},clss{pg},'.jpg -djpeg']; eval(str);
+           close
+        end;
+        fprintf('Emotion %s done.\n',emos{em});
+   end;
+    

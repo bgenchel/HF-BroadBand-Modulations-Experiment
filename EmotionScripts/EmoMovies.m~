@@ -1,0 +1,20 @@
+% make emotion IM movies
+
+datpath = 'C:\Users\julie\Documents\MATLAB\data\emotion\mi83\';
+datset = 'sources.set';
+savedat = 'SpecCoModMoreFreqs';
+
+% Plot one IM, sorted, for demonstration:
+im = 4;
+comp = 5; % mid occ
+frqlim = [3 125];
+moviename = 'GammaSorted.avi';
+trialset = []; % jealousy
+weights = []; % no normalization
+sorttrls = 'on';
+setcols = []; % make a rainbow
+ttls = []; % no titles
+
+[M] = MakeIMmovie(datset,savedat,datpath,im,comp,frqlim,moviename,trialset,weights,sorttrls,setcols,ttls);
+s = load([datpath,savedat,'.mat']); 
+SpecCoModPlot('sources.set',datpath,[],[1:15],savedat,[3 125],'n',0,[]);

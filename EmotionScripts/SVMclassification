@@ -1,0 +1,23 @@
+% run SVM classification on emotion data
+load /data/common4/emotion/YuanPinEmoWeights.mat eweights comment
+load /data/common4/emotion/YuanPinEmoWeights1sec.mat eweights comment
+% last column for each subj is indicator: 1:15
+
+
+svmstruct = svmtrain(eweights{nx}(:,1:end-1),eweights{nx}(:,end));
+
+(DataFormat: [NumOfSample x NumOfFeat] )
+
+Step1: CMD (SVM Parameters Optimization based on whole dataset and
+corresponding label
+for nx = 1:length(eweights)
+    [C,Gamma]=SVMParaGridSearch(eweights{nx}(:,1:end-1),eweights{nx}(:,end));
+end;    
+CMD = ['-c ' num2str(C) ' -g ' num2str(Gamma)];
+
+Step2: SVM Training Code
+SVMModel=svmtrain(TrainingLabel,TrainingData,CMD);
+
+Step3: SVM Testing Code
+[PredictLabel, Accuracy, dec_values] = svmpredict(TestingLabel, TestingData,
+SVMModel);

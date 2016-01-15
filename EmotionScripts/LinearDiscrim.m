@@ -1,0 +1,443 @@
+% performs a linear discriminant analysis on decomposition of emotion data
+
+button = [1:12,21:26]; % all button presses, early and 'only when you feel it' subjects
+button = [13:20]; % no button press (apart from the first one)
+button = [1,2,4:6,8:12,14,17:21,23,25:30,31,33,34]; % all 'good' subjects (ones that said they got into it)
+button = [1:21,23:34];  % not mr72-2
+button = [1,3:9,12,14,16,17,19,21,22,23,24,26,27]; % females
+button = [1,4:6,8,9,12,14,17,19,21,23,26,27]; % 'good' females
+button = [2,10,11,13,15,18,20,25]; % males
+button = [2,10,11,18,20,25,34]; % 'good' males
+
+emo2 = {'anger','frustration','jealousy','fear' ,'disgust','grief','sad','compassion','love','relief','content','awe','happy','joy','excite'}; % no  for now
+grp1 = {'anger','frustration','jealousy','fear' ,'disgust','grief'};
+grp2 = {'love','relief','awe','joy','excite','content','happy'};
+grp3 = {'compassion','sad'};
+for nx = 1:length(gdcomps)
+    cd (['/data/common2/emotion/',paths{nx},'ersps/']);load ContDataERSPs.mat
+    icamatall = zeros(0,length(freqs)*length(gdcomps{nx}));
+    gpvar = zeros(0);grps = zeros(0);
+    for k = 1:length(emo2)
+        oneemo = Alllongersps{k}; % freqsXtimesXcomponent   
+        for cmp = 1:length(gdcomps{nx})
+            onecmp = oneemo(:,:,gdcomps{nx}(cmp));
+            trialmat = zeros(0,size(oneemo,1));
+            for trl = 1:2:size(onecmp,2)-2 % up by 4, avg of 6 (11-1-04)
+                onetrl = mean(onecmp(:,trl:trl),2);
+                onetrl = onetrl-mean(onetrl);
+                trialmat(end+1,:) = onetrl';
+            end;
+            if cmp == 1
+                icamat = trialmat;  icamat(:,1:end) =[];
+            end;
+            icamat(:,end+1:end+size(trialmat,2)) = trialmat;
+        end;
+        icamatall(end+1:end+size(icamat,1),:) = icamat;
+        if find(strcmp(emo2{k},grp1))
+            gpvar(end+1:end+size(trialmat,1)) = 1;
+        elseif find(strcmp(emo2{k},grp2))
+            gpvar(end+1:end+size(trialmat,1)) = 2;
+        else
+            gpvar(end+1:end+size(trialmat,1)) = 3;
+        end;    
+        grps(end+1:end+size(trialmat,1)) = k;
+        fprintf('\n One More EMOTION Done: %i of %i',k,length(emo2));
+    end;
+    pcs = round(sqrt(size(icamatall,1)/10));
+    [weights,sphere,compvars,bias,signs,lrates,activations]  = runica(icamatall','extended',1,'pca',pcs,'stop',1e-7,'maxsteps',2000);
+    winv = pinv(weights*sphere); % winv is c*s X 17
+    [D,P,STATS] = manova1(activations',grps,.01); % acts are 25 X trials
+    saveD(nx) =  D;
+    saveP{nx} = P';
+    shuffgrps = shuffle(grps);
+    [D,P,STATS] = manova1(activations',shuffgrps,.01); % acts are 17 X trials
+    shuffD(nx) = D;
+    shuffP{nx} = P';
+    numpcs(nx) = pcs;
+    fprintf('\n One More SUBJECT Done: %i\n',nx);
+end;
+save LinearDiscrimResults.mat saveD saveP shuffD shuffP numpcs
+    [D,P,STATS] = manova1(icamatall,grps,.01); % acts are 25 X trials
+
+%%%%%%%  Try running Lin discrim on winv matrix
+grps = zeros(1,0);
+for em = 1:length(dstrials)
+    for ds = 1:dstrials(em)
+        grps(1,end+1) = em;
+    end;
+end;
+[d,p,stats] = manova1(winv,grps,.01); % acts are 25 X trials
+% stats.eigenvec are something like 'activations': linear comb of winv columns
+figure; cols=jet(15);row = 4; col = 4;
+for p=1:size(stats.eigenvec,2)
+    sbplot(row,col,p)
+    for em = 1:length(emos)
+    ph=plot(em,stats.eigenvec(p,em),'.');hold on;
+    set(ph,'markersize',15); set(ph,'color',cols(em,:));       
+    ph = text(em,stats.eigenvec(p,em),emos{em});
+    set(ph,'color',cols(em,:));
+    end;
+end;axcopy
+  figure;
+for em = 1:length(emos)
+    ph=plot(stats.eigenvec(1,em),stats.eigenvec(2,em),'.');
+    hold on; set(ph,'markersize',15); set(ph,'color',cols(em,:));       
+    ph = text(stats.eigenvec(1,em),stats.eigenvec(2,em),emos{em});
+    set(ph,'color',cols(em,:));
+end;
+set(gca,'xgrid','on'); set(gca,'ygrid','on'); 
+axcopy
+
+figure;
+for em = 1:length(emos)
+    ph=plot3(stats.eigenvec(1,em),stats.eigenvec(2,em),stats.eigenvec(3,em),'.');
+    hold on; set(ph,'markersize',15); set(ph,'color',cols(em,:));       
+    ph = text(stats.eigenvec(1,em),stats.eigenvec(2,em),stats.eigenvec(3,em),emos{em});
+    set(ph,'color',cols(em,:));
+end;
+set(gca,'xgrid','on'); set(gca,'ygrid','on'); set(gca,'zgrid','on'); 
+axcopy
+
+    >> saveD
+
+saveD =
+
+  Columns 1 through 13 
+
+    14    13    14    14    14    14    13    13    14    14    14    12    14
+
+  Columns 14 through 26 
+
+    14    14    14    14    14    14    14    14    14    14    13    14    14
+
+  Column 27 
+
+    14
+
+>> saveP
+
+saveP =
+
+  Columns 1 through 7 
+
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0         0
+
+  Columns 8 through 14 
+
+         0         0         0         0         0    0.0000    0.0007
+         0         0         0         0         0    0.0000    0.0106
+         0         0         0         0         0         0    0.0000
+         0         0         0         0         0         0    0.0000
+         0         0         0         0         0    0.0000    0.0045
+         0         0         0         0         0         0         0
+         0         0         0         0    0.0000    0.0000    0.0176
+         0         0         0         0    0.0000    0.0000    0.0226
+         0         0         0         0         0         0    0.0000
+         0         0         0         0         0         0         0
+         0         0         0         0         0         0    0.0000
+         0         0         0         0    0.0000    0.0209    0.2877
+         0         0         0         0    0.0000    0.0000    0.0006
+         0         0         0         0         0         0    0.0000
+         0         0         0         0    0.0000    0.0000    0.0010
+         0         0         0         0         0    0.0000    0.0007
+         0         0         0         0         0         0    0.0004
+         0         0         0         0         0    0.0000    0.0006
+         0         0         0         0         0    0.0000    0.0000
+         0         0         0         0         0         0    0.0080
+         0         0         0         0         0    0.0000    0.0027
+         0         0         0         0         0         0    0.0000
+         0         0         0         0         0         0    0.0000
+         0         0         0         0    0.0000    0.0001    0.0282
+         0         0         0         0         0         0    0.0000
+         0         0         0         0         0         0    0.0000
+         0         0         0         0         0    0.0000    0.0000
+
+>> shuffD
+
+shuffD =
+
+  Columns 1 through 13 
+
+     0     0     0     0     0     0     0     0     0     0     0     0     0
+
+  Columns 14 through 26 
+
+     0     0     0     0     0     0     0     0     0     0     0     0     0
+
+  Column 27 
+
+     0
+
+>> shuffP
+
+shuffP =
+
+  Columns 1 through 7 
+
+    0.2826    0.6029    0.8371    0.9406    0.9835    0.9975    0.9994
+    0.2140    0.7981    0.9572    0.9947    0.9994    1.0000    1.0000
+    0.8902    0.9877    0.9992    1.0000    1.0000    1.0000    1.0000
+    0.6903    0.9306    0.9882    0.9974    0.9995    0.9999    1.0000
+    0.1401    0.8687    0.9863    0.9984    0.9997    1.0000    1.0000
+    0.8472    0.9891    0.9995    0.9999    1.0000    1.0000    1.0000
+    0.3921    0.9301    0.9956    0.9992    0.9999    1.0000    1.0000
+    0.4777    0.7583    0.9018    0.9723    0.9944    0.9997    0.9999
+    0.0146    0.3232    0.7094    0.9516    0.9822    0.9961    0.9995
+    0.3179    0.8156    0.9573    0.9957    0.9992    0.9998    1.0000
+    0.2445    0.8145    0.9718    0.9987    0.9999    1.0000    1.0000
+    0.5208    0.8887    0.9814    0.9986    0.9997    1.0000    1.0000
+    0.7891    0.9869    0.9994    1.0000    1.0000    1.0000    1.0000
+    0.0468    0.3428    0.7765    0.9581    0.9961    0.9991    0.9998
+    0.6071    0.9031    0.9634    0.9903    0.9969    0.9991    0.9999
+    0.0176    0.2415    0.7776    0.9537    0.9919    0.9980    0.9997
+    0.2969    0.8012    0.9505    0.9952    0.9996    1.0000    1.0000
+    0.6036    0.8833    0.9825    0.9955    0.9992    0.9999    1.0000
+    0.2064    0.7170    0.9513    0.9943    0.9989    0.9996    0.9997
+    0.4663    0.8459    0.9667    0.9898    0.9971    0.9994    0.9998
+    0.3683    0.9280    0.9857    0.9987    0.9999    1.0000    1.0000
+    0.2179    0.7436    0.9753    0.9962    0.9996    0.9999    1.0000
+    0.0611    0.4740    0.7910    0.9551    0.9929    0.9990    0.9999
+    0.3868    0.7849    0.9385    0.9935    0.9995    0.9999    1.0000
+    0.1843    0.7514    0.8990    0.9791    0.9985    0.9995    0.9999
+    0.3974    0.8158    0.9553    0.9787    0.9910    0.9961    0.9990
+    0.7137    0.9612    0.9927    0.9975    0.9996    0.9999    1.0000
+
+  Columns 8 through 14 
+
+    0.9997    0.9998    0.9999    0.9999    0.9995    0.9972    0.9888
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999
+    1.0000    1.0000    1.0000    1.0000    0.9998    0.9997    0.9983
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9990
+    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999    0.9967
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9987
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9998
+    0.9999    1.0000    1.0000    1.0000    1.0000    1.0000    0.9998
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9989
+    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999    0.9996
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9985
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9992
+    0.9999    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999
+    0.9999    0.9998    0.9998    0.9998    0.9998    0.9985    0.9892
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9990
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9997
+    1.0000    1.0000    1.0000    1.0000    1.0000    0.9997    0.9980
+    0.9999    1.0000    1.0000    1.0000    1.0000    1.0000    0.9975
+    1.0000    1.0000    1.0000    0.9999    0.9997    0.9989    0.9902
+    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999    0.9978
+    1.0000    1.0000    1.0000    1.0000    1.0000    0.9993    0.9908
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9998
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9960
+    0.9997    0.9998    0.9999    1.0000    1.0000    0.9998    0.9980
+    1.0000    1.0000    1.0000    1.0000    1.0000    1.0000    0.9999
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+>> whos icamatall grps
+  Name            Size                   Bytes  Class
+  grps         2135x1                    17080  double array
+  icamatall    2135x2871              49036680  double array
+  >>     [D,P,STATS] = manova1(icamatall,grps,.01);
+??? Error using ==> manova1
+The within-group sum of squares and cross products matrix is singular.
+%( was on icamatall (raw data)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+[pc,eigvec,sv] = runpca(icamatall',50);
+figure; imagesc(sv);
+
+
+%After decomp of S*comps X trials:
+ [weights,sphere,compvars,bias,signs,lrates,activations]  = runica(icamatall','extended',1,'pca',25);
+ winv = pinv(weights*sphere); % winv is c*s X 17
+
+ 
+ cp = 1; sb = [1:size(winv,2)];sb(find(sb==cp))=[];
+ wv = winv; wv(:,sb) = 0;ac = activations;ac(sb,:)=0;newdat = wv*ac;
+ pv = var((icamatall' - newdat)')./var(icamatall);
+  pv = 100-100*pv;
+ figure; plot(pv);
+
+ 
+% Then run manova:
+ [D,P,STATS] = manova1(activations',grps,.01); % acts are 25 X trials
+ [D,P,STATS] = manova1(activations',gpvar,.01); % acts are 25 X trials
+% get:
+>> P'
+
+ans =
+
+   1.0e-04 *
+
+  Columns 1 through 7 
+
+         0         0         0         0         0         0         0
+
+  Columns 8 through 14 
+
+         0         0         0         0         0         0    0.3640
+
+>> D
+
+D =
+
+    14
+
+>>  STATS.eigenval'                             
+
+ans =
+
+  Columns 1 through 7 
+
+    2.0805    1.1684    0.7322    0.3869    0.2174    0.1965    0.1606
+
+  Columns 8 through 14 
+
+    0.0842    0.0573    0.0417    0.0387    0.0176    0.0111    0.0039
+
+  Columns 15 through 21 
+
+    0.0000    0.0000    0.0000    0.0000   -0.0000   -0.0000   -0.0000
+
+  Columns 22 through 25 
+
+   -0.0000   -0.0000   -0.0000   -0.0000
+
+   newwts = winv*STATS.eigenvec(D,:)';
+EEG = pop_loadset( 'sources.set', ['/data/common2/emotion/',paths{nx}]);
+[ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG);
+figure;row = 7;col=6;pl = 1;
+for cmp = 1:length(gdcomps{nx})
+    subplot(row,col,pl);
+    topoplot(EEG.icawinv(:,gdcomps{nx}(cmp)),EEG.chanlocs,'electrodes','off','plotrad',.5); pl = pl+1;
+    set(gca,'fontsize',7);
+    title(int2str(gdcomps{nx}(cmp)));
+subplot(row,col,pl);
+    plot(freqs,newwts(length(freqs)*(cmp-1)+1:length(freqs)*cmp));hold on;pl = pl+1;
+    set(gca,'xlim',[0 40]);set(gca,'ylim',[-10 10]);
+    set(gca,'xtick',[5:5:40]);
+    set(gca,'xgrid','on');
+end;
+set(gcf,'PaperOrientation','landscape');
+set(gcf,'PaperPosition',[0.25 0.25 10.5 8]);
+
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% now shuffle the trial assignments:
+shuffgrps = shuffle(grps);
+    [D,P,STATS] = manova1(activations',shuffgrps,.01); % acts are 17 X trials
+ newwts = winv*STATS.eigenval;
+>> P'
+
+ans =
+
+  Columns 1 through 7 
+
+    0.2760    0.7119    0.9341    0.9924    0.9993    0.9999    1.0000
+
+  Columns 8 through 14 
+
+    1.0000    1.0000    1.0000    1.0000    0.9999    0.9993    0.9992
+
+>> D
+
+D =
+
+     0
+
+>>  STATS.eigenval'        
+
+ans =
+
+  Columns 1 through 7 
+
+    0.0063    0.0052    0.0046    0.0038    0.0031    0.0024    0.0021
+
+  Columns 8 through 14 
+
+    0.0015    0.0013    0.0011    0.0009    0.0007    0.0006    0.0002
+
+  Columns 15 through 21 
+
+    0.0000    0.0000    0.0000    0.0000   -0.0000   -0.0000   -0.0000
+
+  Columns 22 through 25 
+
+   -0.0000   -0.0000   -0.0000   -0.0000
+
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ MANOVA1 One-way multivariate analysis of variance (MANOVA).
+    D = MANOVA1(X,GROUP,ALPHA) performs a one-way MANOVA for comparing
+    the mean vectors of two or more groups of multivariate data.
+ 
+    X is a matrix with each row representing a multivariate
+    observation, and each column representing a variable.
+ 
+    GROUP is a vector of the same length as X, or a string array or
+    cell array of strings with the same number of rows as X.  X values
+    are in the same group if they correspond to the same value of GROUP.
+        
+    [D,P,STATS] = MANOVA1(...) returns a STATS structure with the
+    following fields:
+        W        within-group sum of squares and cross-products
+        B        between-group sum of squares and cross-products
+        T        total sum of squares and cross-products
+        dfW      degrees of freedom for W
+        dfB      degrees of freedom for B
+        dfT      degrees of freedom for T
+        lambda   value of Wilk's lambda (the test statistic)
+        chisq    transformation of lambda to a chi-square distribution
+        chisqdf  degrees of freedom for chisq
+        eigenval eigenvalues of (W^-1)*B
+        eigenvec eigenvectors of (W^-1)*B; these are the coefficients
+                 for canonical variables, and they are scaled
+                 so the within-group variance of C is 1
+        canon    canonical variables, equal to XC*eigenvec, where XC is
+                 X with columns centered by subtracting their means
+        mdist    Mahalanobis distance from each point to its group mean
+        gmdist   Mahalanobis distances between each pair of group means
+ 
+        
+% to plot spectra from winv:
+figure;row = size(winv,2); col = length(gdcomps{nx}); pl = 1;
+    for tp = 1:row-2
+        subplot(row,col,pl)
+            for cmp = 1:length(gdcomps{nx})
+            rcp = cmp;
+            subplot(row,col,pl)
+            plot(freqs,winv(length(freqs)*(rcp-1)+1:length(freqs)*rcp,tp)); pl = pl+1;hold on;
+            set(gca,'fontsize',7);set(gca,'box','off');
+            set(gca,'xlim',[0 40]);
+            %set(gca,'ylim',[-3.5 10.5]);   
+            set(gca,'xtick',[5:5:40]);
+            set(gca,'xticklabel',{[] 10 [] [] [] 30 [] []}); 
+            set(gca,'xgrid','on');
+            set(gca,'yticklabel',[]); set(gca,'xticklabel',[]);
+            plot([0 0],[get(gca,'ylim')],'g');
+        end;
+    end;

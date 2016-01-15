@@ -1,0 +1,181 @@
+% this plots mean ERSPs across given IM templates (can be shifted)
+% mask ['mask' or 'off'] enter 'mask' to perform statistics across cluster members def 'off'
+% addmean ['addmean' or 'nomean']
+
+function PlotWTcomodClustERSPs(savedat,fullpaths,plottmpls,plotidxs,plotmeans,freqs,condttls,mask,addmean,rowcolpl);
+    
+    baseline = 0;
+    plotspecs = 'plotspecs'; % or 'plotspecs' or 'off'
+    if ~exist('condttls')
+        condttls = [];
+    end;
+    
+    s = load([fullpaths{1},savedat,'.mat']);  
+    condidx = s.keeptrack(:,1)';    
+    conds = unique(condidx); 
+    if isempty(condttls)
+        for c = 1:length(conds)
+            condttls{c} = int2str(conds(c));
+        end;
+    end;
+
+    if ~exist('rowcolpl')
+        figure; pl = 1;
+        rowcolpl = [];
+        row =  round(sqrt(length(conds)));
+        col = round(sqrt(length(conds)));
+    elseif isempty(rowcolpl)
+        figure; pl = 1;
+        row =  round(sqrt(length(conds)));
+        col = round(sqrt(length(conds)));
+    else % plot into existing figure with specified start subplot
+        row = rowcolpl(1); col = rowcolpl(2); pl = rowcolpl(3);
+    end;
+    if ~exist('mask')
+        mask = 'off';
+    end;
+    if ~exist('addmean')
+        mask = 'nomean';
+    elseif isempty(addmean)
+        mask = 'nomean';
+   end;
+    if isempty(mask)
+        mask = 'off';
+    end;
+    
+    for cond = 1:length(conds)
+        condidx = s.keeptrack(:,1)';    
+        plotpnts = unique(s.keeptrack(find(condidx == conds(cond)),3)); % time points to plot 
+        cond1pnts = unique(s.keeptrack(find(condidx == 1),3)); % time points to plot 
+        clustersp = zeros(size(plottmpls,2),length(plotpnts),0);allmeans = [];specmeans=[];
+        justwts = [];
+        for mem = 1:size(plotidxs,1)
+            nx = plotidxs(mem,1);
+            s = load([fullpaths{nx},savedat,'.mat']);  
+            sph=floatread([fullpaths{nx},savedat,'.sph'],[s.pcs s.pcs],[],0); 
+            wts=floatread([fullpaths{nx},savedat,'.wts'],[s.pcs s.pcs],[],0);        
+            ws = wts*sph;   winv = inv(ws); 
+            clear wts sph  
+            speceig = floatread([fullpaths{nx},s.eigfile],[length(s.rowmeans) s.pcs],[],0);
+            specwts = speceig*winv;  
+            winv = specwts; clear speceig specwts  icamatall 
+            frs = find(ismember(s.freqs,freqs));
+            condidx = s.keeptrack(:,1)';    
+            pnts = find(condidx == conds(cond));
+            ntrials = length(pnts);
+            bslnpnts = find(condidx == 1);bslntrials = length(bslnpnts);
+            bkproj = (winv(pnts,abs(plotidxs(mem,2)))*plottmpls(mem,:))'; 
+            bslnproj = (winv(bslnpnts,abs(plotidxs(mem,2)))*plottmpls(mem,:))'; 
+            jw = winv(pnts,abs(plotidxs(mem,2)))';
+            
+            if strcmp(addmean,'addmean') % add back mean ERSP
+                bkproj = bkproj + repmat(s.meanpwr(find(s.complist==plotidxs(mem,3)),frs)',[1 size(bkproj,2)]);
+                bslnproj = bslnproj + repmat(s.meanpwr(find(s.complist==plotidxs(mem,3)),frs)',[1 size(bslnproj,2)]);
+            end;
+            bkproj = reshape(bkproj,[size(bkproj,1) length(plotpnts) ntrials/length(plotpnts)]);
+            bslnproj = reshape(bslnproj,[size(bslnproj,1) length(cond1pnts) bslntrials/length(cond1pnts)]);
+            jw = reshape(jw,[size(jw,1) length(plotpnts) ntrials/length(plotpnts)]);
+            
+            if strcmp(addmean,'addmean') % add back mean ERSP
+                newbsln = find(cond1pnts < baseline);
+                if isempty(newbsln)
+                    newbsln = 1; % first bin if 'baseline' is too early
+                end;
+                onebsln = mean(mean(bslnproj(:,newbsln,:),2),3);
+                allmeans = [allmeans;mean(onebsln,3)'];
+                tmpbsln = repmat(onebsln,[1 size(bkproj,2)*size(bkproj,3)]);
+                bkproj = bkproj - reshape(tmpbsln,[size(tmpbsln,1) size(bkproj,2) size(bkproj,3)]); % use bsln from cond 1
+               % bkproj = bkproj - repmat(onebsln,[1 size(bkproj,2) size(bkproj,3)]); % use bsln from cond 1
+                specmeans = [specmeans;s.meanpwr(find(s.complist==plotidxs(mem,3)),frs)];
+            end;
+            bkproj = mean(bkproj,3); % take the mean
+            jw = mean(jw,3);
+            justwts = [justwts; jw];
+            clustersp(:,:,end+1) = bkproj;
+        end;
+        if strcmp(mask,'mask') % create sig mask
+            [clustersp] = GroupSig(clustersp,[],.01,'permt');  
+        else
+            clustersp = mean(clustersp,3);
+        end;
+        
+        if strcmp(plotspecs,'plotspecs') % add back mean ERSP
+            if isempty(rowcolpl)
+                col = col+3; 
+            end;
+            sbplot(row,col,pl);pl = pl+1;
+            if strcmp(s.freqscale,'quad')
+                [handle realx labelx] = quadplot(freqs,allmeans);
+            else
+                plot(freqs,allmeans);
+                set(gca,'xlim',[freqs(1) 30]);
+            end;
+            set(gca,'xgrid','on'); 
+            if pl < col
+                title('ERSP Baselines');%set(gca,'xticklabel',[]);
+            end;
+            if pl > col*(row-1)
+                xlabel('Frequency (Hz)'); ylabel('Power (dB)');
+            end;
+            sbplot(row,col,pl);pl = pl+1;
+            if strcmp(s.freqscale,'quad')
+                [handle realx labelx] = quadplot(freqs,specmeans);
+            else
+                plot(freqs,specmeans);
+                set(gca,'xlim',[freqs(1) 30]);
+            end;
+            set(gca,'xgrid','on'); 
+            if pl < col
+                title('Overall Means');%set(gca,'xticklabel',[]);
+            end;
+            if pl > col*(row-1)
+                xlabel('Frequency (Hz)'); ylabel('Power (dB)');
+            end;
+            sbplot(row,col,pl);pl = pl+1;
+            if strcmp(s.freqscale,'quad')
+                [handle realx labelx] = quadplot(freqs,plottmpls);
+            else
+                plot(freqs,plottmpls);
+                set(gca,'xlim',[freqs(1) 30]);
+            end;
+            set(gca,'xgrid','on'); 
+            if pl <= col
+                title('IM Cluster Templates');%set(gca,'xticklabel',[]);
+            end;
+            if pl > col*(row-1)
+                xlabel('Frequency (Hz)'); ylabel('Power (dB)');
+            end;
+            sbplot(row,col,pl);pl = pl+1;
+            plot(justwts'); set(gca,'xlim',[1 size(justwts,2)]); hold on;
+            plot([get(gca,'xlim')],[0 0],'k-');
+            set(gca,'ylim',[-.3 .3]);
+            if pl <= col
+                title('IM weights');
+            end;
+            if pl > col*(row-1)
+                xlabel('Time Points'); ylabel('IM weights');
+            end;
+        end;    
+        
+        clim = max(max(abs(clustersp)));
+        if clim == 0
+            clim = 1; 
+        end;    
+        sbplot(row,col,pl); pl = pl+1;
+        if strcmp(s.freqscale,'quad')
+            [realy,labely] = quadimagesc(plotpnts,freqs,clustersp,[-clim clim]); hold on;
+        elseif strcmp(s.freqscale,'log')
+            [realy,labely] = mylogimagesc(plotpnts',freqs,clustersp,[-clim clim]); hold on;
+        else % linear
+            imagesc(plotpnts',freqs,clustersp,[-clim clim]); hold on;
+            set(gca,'ydir','norm');
+        end;
+        set(gca,'ticklength',[.04 .04]);
+        ph = plot([0 0],[get(gca,'ylim')],'k-');
+        title([condttls{cond}]);set(gca,'xticklabel',[]);
+        if pl > col*(row-1)
+            xlabel('Time Points'); ylabel('Frequency (Hz)');
+        end;
+        cbar;
+    end;
+        

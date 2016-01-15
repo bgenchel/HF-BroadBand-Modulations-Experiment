@@ -1,0 +1,50 @@
+% use plain ICA to find emotion space for all subjects
+%
+%
+%
+%
+%
+%
+% emomeans -- straight means: {nx}(dim,emo), or deciles:  {subj}(IM,emo,dec)
+%
+
+function [wtsdensity] = EmoWeights(savedat,fullpaths,gdcomps,subjlist);
+    
+    
+    %[emoorders] = FindEmoOrder(fullpaths,emos);
+    clear   emomeans
+    for nxx = 1:length(subjlist)   
+      nx = subjlist(nxx);
+        emeans = zeros(15,15);
+        s = load([fullpaths{nx},savedat,'.mat']);  
+        sph=floatread([fullpaths{nx},savedat,'.sph'],[s.numtrials s.numtrials],[],0); 
+        wts=floatread([fullpaths{nx},savedat,'.wts'],[s.pcs s.numtrials],[],0); 
+        ws = wts*sph;     icawinv = pinv(ws); icawinv = icawinv';
+        newwinv = zeros(15,size(icawinv,2));
+        newwinv = icawinv;
+        % Convert raw activations matrix to stds (mean is close to zero)
+        % this is so one subj doesn't dominate decomposition
+        %for dim = 1:size(icawinv,1)
+        %    newwinv(dim,:) = icawinv(dim,:)/std(icawinv(dim,:));
+        %end; % makes a dim X windows matrix
+        %%%%%%%%%%  find straight mean of each dim/emo %%%%%%%%%%%%%%%%%%%%%%%%%%%
+        for dim = 1:size(newwinv,1) % for all (new)dims...
+            for e = 1:length(s.dstrials) % break up windows into emos...
+                emeans(dim,e) = median(newwinv(dim,sum(s.dstrials(1:e-1))+1:sum(s.dstrials(1:e))));
+            end;
+        end; % makes a 15 dims X 15 emotions matrix
+        emomeans{nx} = emeans;
+        %%%%%%%%%%  find decile values for each dim/emo %%%%%%%%%%%%%%%%%%%%%%%%%%%
+        for dim = 1:size(newwinv,1) % for all (new)dims...
+            for e = 1:length(s.dstrials) % break up windows into emos...
+                tmpdist = sort(newwinv(dim,sum(s.dstrials(1:e-1))+1:sum(s.dstrials(1:e))));                
+                for d = 10:10:90
+                    emodeciles{nx}(dim,e,d/10) = tmpdist(ceil(length(tmpdist)*(d/100)));
+                end;
+            end;
+        end;
+        fprintf('Subject %s of %s total subjs done.\n',int2str(nx),int2str(length(subjlist)));
+    end;
+   
+    
+    

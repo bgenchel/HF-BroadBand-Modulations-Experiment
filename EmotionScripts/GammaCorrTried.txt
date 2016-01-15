@@ -1,0 +1,33 @@
+I have tried the following things to find correlations between
+emotion and gamma IMs:
+
+1) correlation via 'matcorr()'and regress()
+   results showed only about ~8 IMs with sig correlation by
+   p value of regress(). This was only in clusters 1/2, so 
+   both brain and muscle had some correlation. Correlation
+   was with behavioral ratings of VALENCE, while almost none
+   with arousal.
+
+2) I tried just looking at the mean, median IM wts for each
+   cluster over all emotions to see if any emotions were more
+   affected by any cluster. Though clusters 2,3,4 all had a
+   p < .05 from ANOVA1, none showed any specific emotion that
+   was significantly different than the others by bonferroni
+   post-hoc test.
+
+3) I found which IMs showed any significant differences in
+   their mean weights by ANOVA1 and then did a bonferroni
+   post hoc test to see which emotions differed from others
+   in a pairwise fashion. I quantified the number of times
+   each emotion was found in a significantly differentiated
+   pair as a measurement of which emotions tended to stand
+   out for each IM. Then I looked at the mean, median, and 
+   mode values for these measurements in all gamma clusters.
+   None of the means or medians were significant, again by 
+   ANOVA1 test. The modes look somewhat interesting, but there 
+   is no way to do statistics on this measure, and given the
+   lack of significance on other measures, it is likely not 
+   significant.
+
+4) mutual information between IM weights--calculating
+

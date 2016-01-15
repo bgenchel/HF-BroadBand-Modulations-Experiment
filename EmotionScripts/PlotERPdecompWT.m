@@ -1,0 +1,254 @@
+% auxpath -- [string] if .mat is saved in a different folder from .set
+%             this string should be the one pointing to the .mat
+% maps -- ['maps','off'] if 'maps', then will plot scalp maps. 
+
+
+function PlotERPdecompWT(datset,datpath,plotcomps,factors,savedat,superpos,auxpath,maps);
+    
+    
+    
+    justone = []; % initialize and change if only one requested
+    plotbackproj = 'off'; % for single IM plotting, plots all trials vs activations
+    maxrows = 17; % max # of rows to plot before starting new fig
+    
+    if ~exist('maps')
+        maps = 'off';
+    end;
+    
+    nlim = []; mlim = [];
+    fprintf('\nLoading subject spectral decomposition data...\n');
+    if strcmp(maps,'maps')% plot maps if requested
+        EEG = pop_loadset(datset, datpath);
+    end;
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    if exist('auxpath')
+        if ~isempty(auxpath)
+            datpath = auxpath;
+        end;
+    end;
+    s = load([datpath,savedat,'.mat']);   
+    sph=floatread([datpath,savedat,'.sph'],[s.pcs s.pcs],[],0); 
+    wts=floatread([datpath,savedat,'.wts'],[s.pcs s.pcs],[],0);        
+    icamatall = floatread([datpath,savedat,'.fdt'],[s.pcs s.numframes],[],0);    
+    ws = wts*sph;    activations = ws*icamatall;    winv = pinv(ws); 
+    clear wts sph ws icamatall
+    speceig = floatread([datpath,s.eigfile],[length(s.rowmeans) s.pcs],[],0);
+    specwts = speceig*winv;  
+    winv = specwts; clear speceig specwts   
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    if isempty(plotcomps)
+        plotcomps = s.complist; 
+    elseif length(plotcomps) == 1
+        justone = plotcomps;
+    end;
+    if isempty(factors)
+        factors = [1:size(activations,1)];
+    end;
+
+    if isempty(justone)
+        minl = min(min(activations(factors,:)))-abs(min(min(activations(factors,:))))*.01;
+        maxl = max(max(activations(factors,:)))+abs(max(max(activations(factors,:))))*.01;
+        if superpos == 'y'
+            figure;pl = 1;
+            row = round(sqrt(length(factors))); col = ceil(sqrt(length(factors)));
+            cols = jet(length(plotcomps)); 
+            for tpp = 1:length(factors)
+                lnwdth = 2.5;
+                lnfac = (lnwdth-2)/length(plotcomps);
+                tp = factors(tpp);               
+                sbplot(row,col,pl)
+                for cp = 1:length(plotcomps)
+                    rcp = find(plotcomps(cp) == s.complist); 
+                    if strcmp(s.freqscale,'quad') % quadratic spaced freqs
+                        ph = quadplot(s.freqs,activations(tp,length(s.freqs)*(rcp-1)+1:length(s.freqs)*rcp),lnwdth,cols(cp,:)); hold on;
+                    elseif strcmp(s.freqscale,'log') % log spaced
+                        ph = plot(s.freqs,activations(tp,length(s.freqs)*(rcp-1)+1:length(s.freqs)*rcp),'linewidth',lnwdth); hold on;
+                        set(gca,'xscale','log');
+                        set(ph,'color',cols(cp,:)); 
+                    else % otherwise linear
+                        ph = plot(s.freqs,activations(tp,length(s.freqs)*(rcp-1)+1:length(s.freqs)*rcp),'linewidth',lnwdth); 
+                        hold on; 
+                        set(ph,'color',cols(cp,:)); 
+                    end;
+                    lnwdth = lnwdth - lnfac;
+                end;pl = pl+1;
+                set(gca,'ytick',[-10:5:15]);set(gca,'yticklabel',[-10:5:15]);
+                set(gca,'ylim',[minl maxl]); title(['Fac ',int2str(factors(tpp))]);
+                set(gca,'box','off');
+                set(gca,'xgrid','on');
+                if tpp == length(factors)
+                    xlabel('Frequency (Hz)');
+                    ylabel('Relative Power');
+                end;                
+            end; textsc(['Superimposed Factor Spectra: ',datpath],'title');
+            set(gcf,'Position',[100 300 1400 900]);
+            set(gcf,'PaperOrientation','landscape');  set(gcf,'PaperPosition',[0.25 0.25 10.5 8]);
+            set(gcf,'color','w');
+            axcopy
+        else  
+            figure;row = length(factors)+1; 
+            if row > maxrows
+                row = round(row/2);
+                if row > maxrows
+                    row = maxrows;
+                end;             
+            end;            
+            col = length(plotcomps)+1;
+            if strcmp(maps,'maps')% plot maps if requested
+                pl = 2;           
+                for cp = 1:length(plotcomps)
+                    sbplot(row,col,pl)
+                    topoplot(EEG.icawinv(:,plotcomps(cp)),EEG.chanlocs(EEG.icachansind),'electrodes','off','plotrad',.7); pl = pl+1;
+                    set(gca,'fontsize',7);  title(int2str(plotcomps(cp)));
+                end;
+            else
+                pl = 1;
+            end;
+            
+            for tpp = 1:length(factors)
+                tp = factors(tpp);
+                if pl == row*col+1
+                    set(gcf,'Position',[100 300 1400 900]);
+                    set(gcf,'PaperOrientation','landscape');  set(gcf,'PaperPosition',[0.25 0.25 10.5 8]);
+                    axcopy
+                    ph=textsc(['ERP Templates for ICs from ',datpath,': ',savedat],'title');
+                    set(ph,'fontsize',14);
+                    figure;
+                    if strcmp(maps,'maps')% plot maps if requested
+                        pl = 2;
+                        for cp = 1:length(plotcomps)
+                            sbplot(row,col,pl)
+                            topoplot(EEG.icawinv(:,plotcomps(cp)),EEG.chanlocs(EEG.icachansind),'electrodes','off'); pl = pl+1;
+                            set(gca,'fontsize',7);  title(int2str(plotcomps(cp)));
+                        end;
+                    else
+                        pl = 1;
+                    end;
+                end;
+                sbplot(row,col,pl)
+                hist(winv(:,tp),75);pl = pl+1;hold on;
+                set(gca,'fontsize',7);   %set(gca,'xlim',[-2 2]);
+                plot([0 0],[get(gca,'ylim')],'r-');
+                set(gca,'yticklabel',[]);   set(gca,'xticklabel',[]); 
+                title(['IM ',int2str(tp)]);
+                for cp = 1:length(plotcomps)
+                    rcp = find(plotcomps(cp) == s.complist);
+                    sbplot(row,col,pl);                   
+                    
+                    tpact = activations(tp,length(s.tmpoints)*(rcp-1)+1:length(s.tmpoints)*rcp);
+                    plot(s.tmpoints,tpact,'b-');
+                    pl = pl+1;hold on;                    
+                    set(gca,'xlim',[s.tmpoints(1) s.tmpoints(end)]); 
+                    set(gca,'ylim',[minl maxl]); 
+                    set(gca,'xgrid','on');
+                    set(gca,'fontsize',7);set(gca,'box','off');
+                    set(gca,'ticklength',[.03 .03]);
+                    plot([get(gca,'xlim')],[0 0],'k-');
+                    plot([0 0],[get(gca,'ylim')],'k-');
+                    if pl <= (row-1)*col+1
+                        if tpp ~= length(factors)
+                            set(gca,'xticklabel',[]);
+                            set(gca,'yticklabel',[]);
+                        end;
+                    end;  
+                    if ~strcmp(maps,'maps') & pl <= (col+1)
+                        title(int2str(plotcomps(cp)));
+                    end;
+                end;
+            end;
+            set(gcf,'Position',[100 300 1400 900]);
+            set(gcf,'PaperOrientation','landscape');  set(gcf,'PaperPosition',[0.25 0.25 10.5 8]);
+            ph=textsc(['ERP Templates for ICs from ',datpath,': ',savedat],'title');
+            set(ph,'fontsize',14);
+        end;
+    else % if plotting back-projection of just one IM:---
+        
+        figure;pl = 1;
+        row = round(sqrt(length(plotcomps)*2))+1; col = round(sqrt(length(plotcomps)*2))+1;
+        
+        if ~iseven(col)
+            col = col+1; row = row-1;
+        end;  
+        if strcmp(maps,'maps')% plot maps if requested
+            
+            for cp = 1:length(plotcomps)
+                sbplot(row,col,pl)
+                topoplot(EEG.icawinv(:,plotcomps(cp)),EEG.chanlocs(EEG.icachansind),'electrodes','off'); pl = pl+2;
+                set(gca,'fontsize',10);
+                title(int2str(plotcomps(cp)));
+            end;
+        end;
+        pl = 2;
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        cols = jet(length(plotcomps));
+        
+        if strcmp(plotbackproj,'on')
+            backproj = winv(:,justone)*activations(justone,:) ; 
+            
+            minl = min(backproj(:))-max(abs(s.meanpwr(:)));
+            maxl = max(backproj(:))+max(abs(s.meanpwr(:)));
+        else
+            minl = floor(min(activations(justone,:))-abs(min(activations(justone,:)))*.01);
+            maxl = ceil(max(activations(justone,:))+abs(max(activations(justone,:)))*.01);            
+        end;
+        
+        for cmp = 1:length(plotcomps)
+            rcp =  find(plotcomps(cmp) == s.complist);
+            sbplot(row,col,pl)
+            if strcmp(plotbackproj,'on')
+                tpact = mean(backproj(:,length(s.tmpoints)*(rcp-1)+1:length(s.tmpoints)*rcp),1);
+                plot(s.tmpoints,tpact,'b-');
+                pl = pl+1;hold on;                    
+                set(gca,'xlim',[s.tmpoints(1) s.tmpoints(end)]); 
+                set(gca,'ylim',[minl maxl]); 
+                set(gca,'xgrid','on');
+                set(gca,'fontsize',7);set(gca,'box','off');
+                set(gca,'ticklength',[.03 .03]);
+                plot([get(gca,'xlim')],[0 0],'k-');
+                plot([0 0],[get(gca,'ylim')],'k-');
+            else
+                tpact = activations(tp,length(s.tmpoints)*(rcp-1)+1:length(s.tmpoints)*rcp);
+                plot(s.tmpoints,tpact,'b-');
+                pl = pl+1;hold on;                    
+                set(gca,'xlim',[s.tmpoints(1) s.tmpoints(end)]); 
+                set(gca,'ylim',[minl maxl]); 
+                set(gca,'xgrid','on');
+                set(gca,'fontsize',7);set(gca,'box','off');
+                set(gca,'ticklength',[.03 .03]);
+                plot([get(gca,'xlim')],[0 0],'k-');
+                plot([0 0],[get(gca,'ylim')],'k-');
+            end;
+            set(gca,'ylim',[minl maxl]);
+            fprintf('.');pl = pl+2; 
+            if cmp ~= length(plotcomps)
+                set(gca,'xticklabel',[]);
+            end;            
+            title(['IM ',int2str(justone),'; IC ',int2str(plotcomps(cmp))]);
+        end;
+        if pl < (row * col)+1
+            sbplot(row,col,pl-1)
+            hist(winv(:,justone),75);hold on; pl = pl+1;
+            set(gca,'fontsize',10);
+            plot([0 0],[get(gca,'ylim')],'r-'); 
+            title('Factor Weights');
+        end;
+        if pl < (row * col)+1  % plot IMs superimposed at the end
+            cols = jet(length(plotcomps));      
+            sbplot(row,col,pl-1)
+
+            for cp = 1:length(plotcomps)
+                rcp =  find(plotcomps(cp) == s.complist);
+                tpact = activations(tp,length(s.tmpoints)*(rcp-1)+1:length(s.tmpoints)*rcp);
+                ph = plot(s.tmpoints,tpact,'b-');
+                set(ph,'color',cols(cp,:));
+            end;title(['IM ',int2str(justone)]); 
+            set(gca,'ylim',[minl maxl]);
+        end;
+        set(gcf,'Position',[100 300 1400 900]);
+        set(gcf,'PaperOrientation','landscape');   set(gcf,'PaperPosition',[0.25 0.25 10.5 8]);
+        ph=textsc(['ERP Templates, Factor ',int2str(justone),' for ',datpath,': ',savedat],'title');
+        set(ph,'fontsize',14);
+    end;
+    

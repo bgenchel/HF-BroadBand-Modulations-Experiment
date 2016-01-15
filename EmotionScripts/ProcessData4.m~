@@ -1,0 +1,27 @@
+% this is for after the emotion space decomp to discover what 
+% median-weighted IM templates look like for each emotion.
+
+addpath('/home/julie/MatlabScripts/emotion')
+DataInfo    % this matlab files loads all subject info needed
+savedat = 'SpecCoMod'; fullpaths = newpaths;
+% see bottom of script for other subject lists
+subjlist = [2:21,23:31,33:35];% all but 1,22,32
+
+% for regular gdcomps decomposition:--------------------
+load /data/common1/emotion/EmoWeights.mat emomeans emodeciles
+load /data/common1/emotion/AllClustFacs.mat    
+load /data/common1/emotion/SpectralDecompStuff.mat 
+strs = {
+    'load /data/common1/emotion/ThetaClust.mat',
+    'load /data/common1/emotion/AlphaClust.mat',
+    'load /data/common1/emotion/BetaClust.mat',
+    'load /data/common1/emotion/GammaClust.mat'};
+ttl = {'Theta','AlphaLow','AlphaPeak','AlphaHigh','BetaLow','BetaHigh','Gamma'};
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% for muscle decomposition:-------------------
+load /data/common1/emotion/EmoWeightsMuscle.mat emomeans emodeciles
+load /data/common1/emotion/AllClustFacsMuscle.mat    
+load /data/common1/emotion/SpectralDecompStuffMusc.mat 
+strs = {'load /data/common1/emotion/GammaGdMsVf.mat'};
+ttl = {'Brain','Muscle','OMT'};
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

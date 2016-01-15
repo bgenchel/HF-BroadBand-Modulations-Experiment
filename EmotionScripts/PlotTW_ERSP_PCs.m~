@@ -1,0 +1,64 @@
+% erspcxt - ['ersp','cxt','both'] which PC template measures to plot
+% if plotting context, labels is list of questions
+
+function PlotTW_ERSP_PCs(savedat,fullpath,erspcxt,labels);
+
+s = load([fullpath,savedat,'.mat']);
+erspeig = floatread([fullpath,s.eigfile],[length(s.freqs)*length(s.times) s.pcmat],[],0);
+if ~isempty(labels) % has context
+  cxteig = floatread([fullpath,s.cxteigfile],[length(s.cxtmean) s.pcctx],[],0);
+else
+  cxteig = [];
+end
+
+% Plot ERSP templates:
+pcs = [1:size(erspeig,2)];
+row = round(sqrt(length(pcs)));
+col = ceil(sqrt(length(pcs)));
+if col > 5
+   col = 5; row = 5;
+end;
+clim = max(erspeig(:));
+figure; pl=1;
+for pc = 1:size(erspeig,2)
+   if pl>row*col
+      figure;pl=1;
+   end;
+   sbplot(row,col,pl);pl=pl+1;
+   imagesc(s.times,s.freqs,reshape(erspeig(:,pc),[length(s.freqs) length(s.times)]),[-clim clim]);
+   set(gca,'ydir','norm'); title(['PC ',int2str(pc)]);
+end;
+
+if ~isempty(cxteig)
+  % plot the context templates:
+  cols =  hsv(length(labels));
+  pcs = [1:size(cxteig,2)];
+  row = round(sqrt(length(pcs)));
+  col = ceil(sqrt(length(pcs)));
+  if col > 5
+    col = 5; row = 5;
+  end;
+  clim = max(cxteig(:));
+  figure;pl=1;
+  for pc = 1:length(pcs)
+    if pl>row*col
+      figure;pl=1;
+    end;
+    sbplot(row,col,pl);pl=pl+1;
+    ph = plot([1:size(cxteig,1)],cxteig(:,pc),'k-','linewidth',1);
+    set(ph,'color',[.5 .5 .5]);
+    set(gca,'xlim',[0 size(cxteig,1)+1]); hold on;
+    ph = plot([get(gca,'xlim')],[0 0],'r-');
+    for q = 1:size(cxteig,1)
+      ph = plot(q,cxteig(q,pc),'b.');
+      set(ph,'color',cols(q,:));set(ph,'markersize',10)
+    end;
+    for q = 1:size(cxteig,1)
+      ph = text(q,cxteig(q,pc)+cxteig(q,pc)*.01,labels{q});
+      set(ph,'color',cols(q,:));
+      set(ph,'rotation',90); set(ph,'fontsize',10);
+    end;  set(gca,'xticklabel',[]); axis('off')
+    
+  end;
+end;
+

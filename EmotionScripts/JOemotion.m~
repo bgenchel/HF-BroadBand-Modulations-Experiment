@@ -1,0 +1,12 @@
+% Julie Onton emotion expt
+fullpaths{1} = '/data/common4/emotion/jo74/';
+datset = {'JOnew1.set','JOnew2.set','JOnew3.set','JOnew4.set'};
+nchan = 245;
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% RUN ICA
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+wtstem = 'ICA';rejthresh = [1000 5];
+tmpstem = [wtstem,int2str(day),'_'];
+[EEG,numframes,nchan] = MakeFloats(datset,fullpaths{1},wtstem,[],[],rejthresh,0);    
+[run_ica_str] = LinuxICA(wtstem,['ICAinstruct'],fullpaths{1},sum(numframes),nchan,0,1);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

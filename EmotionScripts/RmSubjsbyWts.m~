@@ -1,0 +1,18 @@
+% takes the 'activations' matrix from 'Emotion Space' decomp and returns subjects without 
+% 'highly weighted' (specified by user) factors in the dimensions specified.
+%
+%
+%
+%
+% INPUTS:
+% activations -- matrix of size (dimensions x factors*subjects)
+% subjlist -- vector of size 1 x factors*subjects (# columns of activations matrix) indicating
+%             for each column which subject is represented
+% dims -- [vector] list of dimensions of decomposition to find highly weighted factors for.
+% cutwt -- [vector] one value per dimension listed, uses this value as the threshold for subject 
+%          inclusion, else if empty, will use the 1.5*(standard deviation) as the cutoff for each 
+%          dimension 
+%
+%
+
+function RmSubjsbyWts(activations,subjlist,dims,cutwt);

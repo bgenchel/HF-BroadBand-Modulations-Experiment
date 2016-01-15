@@ -1,0 +1,15 @@
+% takes a float file used for CoMod decomp and sub-samples, then
+% re-runs ICA with little or no PCA. Also can be used to rerun 
+% comod decomp with other parameters but no subsample.
+%
+%
+%
+%
+%
+%
+
+function CoModSubSample(datpath,savedat,frqlim,freqscale,pcfac,overlap,auxpath,nfreqs);
+    
+    
+    s = load([datpath,savedat,'.mat']);
+    data = floatread([datpath,savedat,'.fdt'],[s.numtrials s.numframes],[],0);

@@ -1,0 +1,14 @@
+% plot just the max activation vs latency for each trial
+% in a dataset of ICs scaled by scalp RMS
+
+function PlotMaxActVsLatERP(datset,fullpath,complist,tmlims,rejs);
+
+    EEG = pop_loadset('filename',datset,'filepath',fullpath);nchan=size(EEG.data,1);
+    EEG = pop_select( EEG,'time',tmlims );
+    EEG = pop_select(EEG,'notrial',rejs);% delete specified epochs
+    
+    for ic = 1:length(complist)
+      rms = sqrt(mean(EEG.icawinv(:,complist(ic)).^2));
+      dat(ic,:,:) = EEG.icaact(complist(ic),:,:)*rms;
+    end;
+    

@@ -1,0 +1,53 @@
+EEG.data(1,:) = rmbase(EEG.data(1,:),0,1:2000); % remove baseline from first 200 samples
+    [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+figure; plot(EEG.data(1,1:size(EEG.data,2)));  % check for button threshold
+% take out continuous presses 
+    EEG.data(1,42000:size(EEG.data,2))=0;%:size(EEG.data,2)
+    [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Find button on-set by finding minima
+th = 10000;  % threshold (can be high just to find real presses)
+b=1;poi=[];mx=[]; x=1;mxpts = [];ev1=[];
+for index = 2:size(EEG.data,2)
+    if EEG.data(1,index)> th & EEG.data(1,index-1)<th
+        mx (b,:) = index;
+        b = b+1;
+    end;
+end;
+for xp = 1:size(mx,1)-1  % this finds maxima between the thresholds found in mx above
+    m = find(EEG.data(1,mx(xp,:):mx(xp+1,:)) == max(EEG.data(1,mx(xp,:):mx(xp+1,:))));
+    m = m + (mx(xp,:)-1);
+    mxpts(x,1) = m(1); x=x+1;
+end;
+for e = mxpts(1,1):-1:1 %steps through data from 1st max to find first time below "200"
+    if EEG.data(1,e) < 200  % risky, may need to change this threshold with each dataset
+        ev1(e,1) = e;
+    end;
+end;
+poi(1,1) = ev1(size(ev1,1),1)-10;  % finds very first event   
+for p = 2:size(mxpts,1)    % start at 2 to not overwrite first event
+    locmin = find(EEG.data(1,mxpts(p-1,1):mxpts(p,1))==min(EEG.data(1,mxpts(p-1,1):mxpts(p,1)))); % finds min in a range
+    locmin = locmin(1) + (mxpts(p-1,1)-1); % puts locmin back in continuous index
+    smmin = mean(EEG.data(1,locmin-20:locmin+1));  % smoothed minimum
+    newlocmn = find(EEG.data(1,locmin:mxpts(p,1)) >smmin+1 );%value of minimum after smoothing
+    if ~isempty(newlocmn)
+        newlocmn = newlocmn(1,1) + (locmin-1); % puts locmin back in continuous index
+        poi(p,:) = newlocmn;  % add this min +50 samples to the matrix to create events
+    end;
+end;
+%%%%%%%%%%%%%%  Now actually make the events and epoch  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+for ep = 1:size(poi,1)
+    EEG.event(end+1) = EEG.event(end);% appends events to the end
+    EEG.event(end).latency = poi(ep,1);
+    EEG.event(end).type = 'press';
+    EEG.event(end).stimulus = 'Response';
+end;
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+% Reorder events according to latency
+EEG = pop_editeventvals(EEG, 'sort',{ 'latency',0});
+[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+% epoch on presses
+[outeeg,indices] = pop_epoch (EEG, {'press'}, [-.5 4], 'epochinfo','yes','newname','awe press');
+[ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, outeeg);
+figure; erpimage( EEG.data(1, :), ones(1, EEG.trials)*EEG.xmax*1000, linspace(EEG.xmin*1000, EEG.xmax*1000, EEG.pnts), '1', 0, 1 ,'erp','cbar');
+ eeglab redraw
